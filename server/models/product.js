@@ -1,26 +1,20 @@
-// const mongoose = require('mongoose');
-
-// const productSchema = new mongoose.Schema({
-//   name: { type: String, required: true },
-//   category: { type: String, required: true },
-//   quantity: { type: Number, required: true },
-//   categoryCode: { type: String, unique: true }, 
-//   prize: { type: String, required: true },
-// });
-
-// module.exports = mongoose.model('Product', productSchema);
-
 const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
   category: { type: String, required: true },
-  price: { type: Number, required: true },
-  barcode: { type: String, unique: true },
-  quantity: { type: Number, required: true },
-  createdAt: { type: Date, default: Date.now }, // Automatically records creation time
+  price: { type: Number, required: true, min: 0 },
+  // Optional; empty values are stored as "no barcode" so several products can lack one.
+  barcode: {
+    type: String,
+    trim: true,
+    set: (v) => (v === '' || v === null ? undefined : v),
+  },
+  quantity: { type: Number, required: true, min: 0 },
+  createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model('Product', productSchema);
+productSchema.index({ barcode: 1 }, { unique: true, sparse: true });
 
+module.exports = mongoose.model('Product', productSchema);

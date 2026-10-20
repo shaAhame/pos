@@ -17,9 +17,14 @@ const Signup = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try{
-            const url = "http://localhost:3000/api/users";
+            const url = "/api/users";
             const{data:res}=await axios.post(url,data);
-            navigate("/login")
+            if (localStorage.getItem("token")) {
+                alert("Account created for " + data.email);
+                setData({ firstName: "", lastName: "", email: "", password: "" });
+            } else {
+                navigate("/login");
+            }
             console.log(res.message);
 
         }catch (error){
@@ -47,6 +52,10 @@ const Signup = () => {
                 <div className={styles.right}>
                     <form className={styles.form_container} onSubmit={handleSubmit}>
                         <h1>Create Account</h1>
+                        <p style={{ fontSize: "13px", margin: "0 0 10px" }}>
+                            Only the first account (the shop owner) can be created here freely.
+                            After that, a logged-in user adds staff accounts from "Add User".
+                        </p>
                         <input
                             type="text"
                             placeholder='First Name'

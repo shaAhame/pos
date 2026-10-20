@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { ToastContainer } from 'react-toastify';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import Main from './components/Main';
 import Signup from './components/Signup';
@@ -14,18 +15,6 @@ import BillsPage from './Pages/Bills/BillsPage';
 import InvoicePage from "./Pages/Invoice/InvoicePage"; 
 
 function App() {
-  const [backendData, setBackendData] = useState([{}]);
-
-  useEffect(() => {
-    fetch("/").then(
-      response => response.json()
-    ).then(
-      data => {
-        setBackendData(data);
-      }
-    );
-  }, []);
-
   const user = localStorage.getItem("token");
 
   return (
@@ -34,7 +23,7 @@ function App() {
         {/* Conditionally render Sidebar if the user is logged in */}
         {user && <Sidebar />}
 
-        <div className="content-container" style={{ marginLeft: user ? '250px' : '0', flex: 1 }}>
+        <div className="app-content" style={{ marginLeft: user ? '250px' : '0', flex: 1, minWidth: 0 }}>
           {/* Main Page Route - Always render Main component */}
           <Main />
 
@@ -51,6 +40,8 @@ function App() {
                 <Route path="/supplier" element={<SupplierPage/>}></Route>
                 <Route path="/product" element={<ProductPage/>}></Route>
                 <Route path="/invoice/:id" element={<InvoicePage />} ></Route>
+                <Route path="/users/new" element={<Signup />} ></Route>
+                <Route path="*" element={<Navigate replace to="/sales" />} />
             </>
               ) : (
                 <>
@@ -58,12 +49,14 @@ function App() {
                   <Route path="/" element={<Navigate replace to="/login" />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/login" element={<Login />} />
+                  <Route path="*" element={<Navigate replace to="/login" />} />
                 </>
               )}
             </Routes>
           </div>
         </div>
       </div>
+      <ToastContainer position="top-right" autoClose={3000} />
     </Router>
   );
 }

@@ -7,7 +7,7 @@ const Sidebar = () => {
     <nav className="sidebar">
       <ul>
         <li>
-          <Link to="/">Dashboard</Link>
+          <Link to="/dashboard">Dashboard</Link>
         </li>
         <li>
           <Link to="/supplier">Supplier</Link>
@@ -26,6 +26,9 @@ const Sidebar = () => {
         </li>
         <li>
           <Link to="/employees">Employees</Link>
+        </li>
+        <li>
+          <Link to="/users/new">Add User</Link>
         </li>
       </ul>
     </nav>

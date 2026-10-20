@@ -1,87 +1,78 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 const BillPage = () => {
   const [transactions, setTransactions] = useState([]);
+  const navigate = useNavigate();
 
-  // Fetch transactions from backend
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const response = await axios.get("http://localhost:5000/api/sales", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        });
-        setTransactions(response.data);
-      } catch (error) {
-        console.error("Error fetching transactions:", error);
-      }
-    };
+  const load = () =>
+    axios.get("/api/sales")
+      .then((res) => setTransactions(res.data))
+      .catch(() => toast.error("Could not load transactions"));
 
-    fetchTransactions();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  // Delete transaction
-  const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this transaction?")) return;
+  // Sales are never deleted. Voiding keeps the record and puts the stock back.
+  const handleVoid = async (t) => {
+    const reason = window.prompt(`Void ${t.invoiceNumber}? Stock will be returned.\n\nReason:`);
+    if (reason === null) return;
+    if (!reason.trim()) return toast.error("A reason is required to void a sale");
     try {
-      await axios.delete(`http://localhost:5000/api/sales/${id}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-      setTransactions(transactions.filter((transaction) => transaction._id !== id));
+      await axios.post(`/api/sales/${t._id}/void`, { reason });
+      toast.success(`${t.invoiceNumber} voided`);
+      load();
     } catch (error) {
-      console.error("Error deleting transaction:", error);
+      toast.error(error?.response?.data?.message || "Could not void sale");
     }
-  };
-
-  // View Invoice
-  const handleViewInvoice = (id) => {
-    window.location.href = `/invoice/${id}`; // Redirects to invoice page
   };
 
   return (
     <div>
       <h2>All Transactions</h2>
+      <div style={{ overflowX: "auto" }}>
       <table>
         <thead>
           <tr>
             <th>Invoice No</th>
+            <th>Date</th>
             <th>Customer</th>
             <th>Total Amount</th>
-            <th>Payment Status</th>
+            <th>Status</th>
             <th>Payment Method</th>
             <th>Items</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {transactions.map((transaction) => (
-            <tr key={transaction._id}>
-              <td>{transaction.invoiceNumber}</td>
-              <td>{transaction.customer?.name || "Unknown"}</td>
-              <td>Rs.{transaction.totalAmount.toFixed(2)}</td>
-              <td>{transaction.paymentStatus}</td>
-              <td>{transaction.paymentMethod}</td>
-              <td>
-                {transaction.items.map((item, index) => (
-                  <div key={index}>
-                    {item.product?.name || "Unknown"} (x{item.quantity})
-                  </div>
-                ))}
-              </td>
-              <td>
-                <button onClick={() => handleViewInvoice(transaction._id)}>Invoice</button>
-                <button onClick={() => handleDelete(transaction._id)} style={{ marginLeft: "5px", color: "red" }}>
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
+          {transactions.map((t) => {
+            const voided = t.paymentStatus === "Voided";
+            return (
+              <tr key={t._id} style={voided ? { color: "#999", textDecoration: "line-through" } : undefined}>
+                <td>{t.invoiceNumber}</td>
+                <td>{new Date(t.date).toLocaleString()}</td>
+                <td>{t.customer?.name || t.customerName || "Walk-in Customer"}</td>
+                <td>Rs.{Number(t.totalAmount || 0).toFixed(2)}</td>
+                <td>{t.paymentStatus}</td>
+                <td>{t.paymentMethod}</td>
+                <td>
+                  {t.items.map((item, index) => (
+                    <div key={index}>{item.name || item.product?.name || "Unknown"} (x{item.quantity})</div>
+                  ))}
+                </td>
+                <td style={{ textDecoration: "none" }}>
+                  <button onClick={() => navigate(`/invoice/${t._id}`)}>Invoice</button>
+                  {!voided && (
+                    <button onClick={() => handleVoid(t)} style={{ marginLeft: "5px", color: "red" }}>Void</button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 };
