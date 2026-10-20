@@ -1,0 +1,54 @@
+.supplier-page {
+    display: flex;
+    flex-direction: column; /* Keep title on top */
+    padding: 20px; /* Padding around the page */
+    background-color: hsl(0, 0%, 100%);
+}
+
+.supplier-page h1 {
+    text-align: left;
+    color: #0b0101;
+    margin-bottom: 20px; /* Space below the title */
+}
+
+.page-content {
+    display: flex; /* Horizontal layout for containers */
+    flex-direction: row; /* Keep containers side by side */
+    gap: 30px; /* Space between content and form */
+    align-items: flex-start; /* Align containers to the top */
+}
+
+.content-container {
+    flex: 3; /* Larger area for content */
+    display: flex;
+    flex-direction: column; /* Content elements stacked vertically */
+    gap: 10px; /* Space between content elements */
+}
+
+.supplier-form-container {
+    flex: 1; /* Smaller area for form */
+    display: flex;
+    justify-content: flex-end; /* Align form to the right */
+}
+
+.supplier-form-container form {
+    width: 300px; /* Optional: Set form width for consistency */
+}
+
+.actions button {
+    margin-right: 10px;
+}
+
+table th, table td {
+    padding: 1px; /* Ensure consistent padding in both th and td */
+    text-align: left; /* Align text to the left in both th and td */
+}
+
+/* Add a fixed width to table headers and cells if necessary */
+table th, table td {
+    min-width: 150px; /* Ensure equal width for both th and td */
+}
+
+table td {
+    word-wrap: break-word; /* Allow word wrap for long text */
+}

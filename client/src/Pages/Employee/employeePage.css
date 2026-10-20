@@ -1,0 +1,43 @@
+.employee-page {
+    display: flex;
+    flex-direction: column; /* Keep title on top */
+    padding: 20px; /* Padding around the page */
+    background-color: hsl(0, 0%, 100%);
+  }
+  
+  .employee-page h1 {
+    text-align: left;
+    color: #0b0101;
+    margin-bottom: 20px; /* Space below the title */
+  }
+  
+  .page-content {
+    display: flex; /* Horizontal layout for containers */
+    flex-direction: row; /* Keep containers side by side */
+    gap: 20px; /* Space between content and form */
+    align-items: flex-start; /* Align containers to the top */
+  }
+  
+  .content-container {
+    flex: 3; /* Larger area for content */
+    display: flex;
+    flex-direction: column; /* Content elements stacked vertically */
+    gap: 20px; /* Space between content elements */
+  }
+  
+  .employee-form-container {
+    flex: 1; /* Smaller area for form */
+    display: flex;
+    justify-content: flex-end; /* Align form to the right */
+  }
+  
+  .employee-form-container form {
+    width: 300px; /* Optional: Set form width for consistency */
+  }
+  
+  .actions button {
+    margin-right: 10px;
+  }
+  
+  
+  

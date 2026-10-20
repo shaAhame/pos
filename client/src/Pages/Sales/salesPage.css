@@ -1,0 +1,138 @@
+.sales-page {
+  padding: 20px;
+  background-color: #ffffff;
+}
+
+.page-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto; /* Center align the page */
+}
+
+.content-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  flex-wrap: wrap; /* Allow wrapping for smaller screens */
+}
+
+.product-selection {
+  padding: 6px;
+  margin: 8px 0;
+  border: none;
+  border-radius: 4px;
+  width: 30%; /* Set width to 60% for dropdown */
+  font-size: 14px;
+}
+
+.scanner-container {
+  padding: 2px;
+  margin: 8px 0;
+  width: 25%; /* Set width for the scanner */
+  max-width: 200px;
+  height: 120px;
+  margin-left: 2px; /* Space between the dropdown and scanner */
+  display: block;
+  overflow: hidden;
+}
+
+.cart-payment-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+.cart-container {
+  flex: 1 1 60%;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.customer-search-results {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  background-color: #fff;
+}
+
+.customer-search-results li {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.customer-search-results li:hover {
+  background-color: #f0f0f0;
+}
+
+.payment-section {
+  flex: 1 1 35%;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+}
+
+.payment-method-buttons button.selected {
+  background-color: hsl(150, 9%, 22%);
+  color: white;
+}
+
+.payment-method-buttons button {
+  padding: 10px 20px;
+  margin: 5px;
+  cursor: pointer;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+
+button {
+  padding: 8px 12px;
+  background-color: #3bb19b;
+  color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+button:hover {
+  background-color: #3bb19b;
+}
+
+.sales-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.sales-table th,
+.sales-table td {
+  padding: 8px;
+  text-align: left;
+}
+
+.sales-table th {
+  background-color: #f4f4f4;
+  font-weight: bold;
+}
+
+.sales-table tbody tr {
+  border-bottom: none;
+}
+
+.sales-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.sales-table,
+.sales-table th,
+.sales-table td {
+  border: none;
+}
