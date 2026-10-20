@@ -11,7 +11,12 @@ const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY) || 0);
 app.disable("x-powered-by");
 
-app.use(helmet({ contentSecurityPolicy: { directives: { "img-src": ["'self'", "data:"] } } }));
+// Note: no "upgrade-insecure-requests" / HSTS, because other tills in the shop often open the
+// app over the local network as plain http://192.168.x.x, and forcing https would break it.
+app.use(helmet({
+  contentSecurityPolicy: { directives: { "img-src": ["'self'", "data:"], "upgrade-insecure-requests": null } },
+  strictTransportSecurity: false,
+}));
 if (process.env.CORS_ORIGIN) app.use(cors({ origin: process.env.CORS_ORIGIN.split(",").map((s) => s.trim()) }));
 app.use(express.json({ limit: "1mb" }));
 

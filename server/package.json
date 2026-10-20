@@ -10,7 +10,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "POS API server",
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
@@ -26,5 +26,8 @@
   "devDependencies": {
     "nodemon": "^3.1.9",
     "supertest": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=18.18"
   }
 }

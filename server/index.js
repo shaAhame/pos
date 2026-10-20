@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const { migrate, getPool, close } = require("./lib/db");
 
 const required = ["DATABASE_URL", "JWTPRIVATEKEY"];
