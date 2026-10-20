@@ -1,5 +1,5 @@
 require("dotenv").config();
-const connection = require("./db");
+const { connection } = require("./db");
 const app = require("./app");
 
 if (!process.env.JWTPRIVATEKEY) {

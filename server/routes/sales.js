@@ -1,17 +1,55 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const router = express.Router();
-const SalesTransaction = require("../models/salesTransaction");
-const Product = require("../models/product");
-const Customer = require("../models/customer");
-const Counter = require("../models/counter");
+const { query, tx } = require("../db");
+const { isId, dbError } = require("../models/util");
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-const isId = (v) => mongoose.Types.ObjectId.isValid(v);
 
-// Put stock back for items that were already deducted (used on failure and on void).
-const restock = (items) =>
-  Promise.all(items.map((i) => Product.updateOne({ _id: i.product }, { $inc: { quantity: i.quantity } })));
+class SaleError extends Error {
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
+}
+
+// Load one or more sales in the shape the React app expects.
+const loadSales = async (db, whereSql, params) => {
+  const { rows: sales } = await db.query(
+    `select s.*,
+            c.name as c_name, c.contact_number as c_contact, c.email as c_email, c.address as c_address,
+            u.first_name as u_first, u.last_name as u_last
+       from sales s
+       left join customers c on c.id = s.customer_id
+       left join users u on u.id = s.cashier_id
+       ${whereSql}
+      order by s.date desc, s.invoice_number desc`,
+    params
+  );
+  if (!sales.length) return [];
+  const { rows: items } = await db.query(
+    "select * from sale_items where sale_id = any($1::uuid[]) order by name",
+    [sales.map((s) => s.id)]
+  );
+  return sales.map((s) => ({
+    _id: s.id,
+    invoiceNumber: s.invoice_number,
+    customer: s.customer_id
+      ? { _id: s.customer_id, name: s.c_name, contactNumber: s.c_contact, email: s.c_email, address: s.c_address }
+      : null,
+    customerName: s.customer_name,
+    items: items
+      .filter((i) => i.sale_id === s.id)
+      .map((i) => ({ _id: i.id, product: i.product_id, name: i.name, quantity: i.quantity, price: i.price, total: i.total })),
+    subtotal: s.subtotal,
+    discount: s.discount,
+    discountAmount: s.discount_amount,
+    taxRate: s.tax_rate,
+    taxAmount: s.tax_amount,
+    totalAmount: s.total_amount,
+    paymentStatus: s.payment_status,
+    paymentMethod: s.payment_method,
+    cashier: s.cashier_id ? { _id: s.cashier_id, firstName: s.u_first, lastName: s.u_last } : null,
+    voided: s.voided_at ? { at: s.voided_at, by: s.voided_by, reason: s.void_reason } : undefined,
+    date: s.date,
+  }));
+};
 
 // Create a sale.
 // Body: { items: [{ product, quantity }], customer?: id, customerName?, paymentMethod, discount?, taxRate? }
@@ -27,80 +65,76 @@ router.post("/", async (req, res) => {
   if (!(disc >= 0 && disc <= 100) || !(tax >= 0 && tax <= 100))
     return res.status(400).json({ message: "Discount and tax must be between 0 and 100%" });
 
-  // Merge duplicate lines and validate quantities.
   const wanted = new Map();
   for (const it of items) {
     const qty = Number(it && it.quantity);
     if (!it || !isId(it.product) || !Number.isInteger(qty) || qty < 1)
       return res.status(400).json({ message: "Each item needs a valid product and a whole-number quantity of at least 1" });
-    wanted.set(String(it.product), (wanted.get(String(it.product)) || 0) + qty);
+    wanted.set(it.product, (wanted.get(it.product) || 0) + qty);
   }
+  if (customer && !isId(customer)) return res.status(400).json({ message: "Invalid customer" });
 
-  let customerDoc = null;
-  if (customer) {
-    if (!isId(customer)) return res.status(400).json({ message: "Invalid customer" });
-    customerDoc = await Customer.findById(customer);
-    if (!customerDoc) return res.status(400).json({ message: "Customer not found" });
-  }
-
-  // Deduct stock one product at a time. Each update only succeeds if enough stock
-  // is available, so two tills can never sell the same last item. If any line
-  // fails, everything already deducted is put back.
-  const deducted = [];
-  const lines = [];
   try {
-    for (const [productId, qty] of wanted) {
-      const product = await Product.findOneAndUpdate(
-        { _id: productId, quantity: { $gte: qty } },
-        { $inc: { quantity: -qty } },
-        { new: true }
-      );
-      if (!product) {
-        const exists = await Product.findById(productId).select("name quantity");
-        await restock(deducted);
-        return res.status(409).json({
-          message: exists
-            ? `Not enough stock for "${exists.name}" (available: ${exists.quantity}, requested: ${qty})`
-            : "A product in the cart no longer exists",
-          productId,
-        });
+    // Everything below is one database transaction: either the whole sale is
+    // saved and all stock is deducted, or nothing changes at all.
+    const saleId = await tx(async (db) => {
+      let custName = (customerName || "").trim() || "Walk-in Customer";
+      if (customer) {
+        const { rows } = await db.query("select name from customers where id = $1", [customer]);
+        if (!rows[0]) throw new SaleError(400, "Customer not found");
+        custName = rows[0].name;
       }
-      deducted.push({ product: product._id, quantity: qty });
-      lines.push({
-        product: product._id,
-        name: product.name,
-        quantity: qty,
-        price: product.price,
-        total: round2(product.price * qty),
-      });
-    }
 
-    const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
-    const discountAmount = round2((subtotal * disc) / 100);
-    const taxAmount = round2(((subtotal - discountAmount) * tax) / 100);
-    const totalAmount = round2(subtotal - discountAmount + taxAmount);
+      // Lock rows in a fixed order so two tills can't deadlock each other.
+      const lines = [];
+      for (const productId of [...wanted.keys()].sort()) {
+        const qty = wanted.get(productId);
+        const { rows } = await db.query(
+          "update products set quantity = quantity - $2 where id = $1 and quantity >= $2 returning id, name, price",
+          [productId, qty]
+        );
+        if (!rows[0]) {
+          const { rows: ex } = await db.query("select name, quantity from products where id = $1", [productId]);
+          throw new SaleError(
+            409,
+            ex[0]
+              ? `Not enough stock for "${ex[0].name}" (available: ${ex[0].quantity}, requested: ${qty})`
+              : "A product in the cart no longer exists",
+            { productId }
+          );
+        }
+        const p = rows[0];
+        lines.push({ productId: p.id, name: p.name, quantity: qty, price: p.price, total: round2(p.price * qty) });
+      }
 
-    const seq = await Counter.next("invoice");
-    const sale = await SalesTransaction.create({
-      customer: customerDoc ? customerDoc._id : undefined,
-      customerName: customerDoc ? customerDoc.name : (customerName || "").trim() || "Walk-in Customer",
-      items: lines,
-      subtotal,
-      discount: disc,
-      discountAmount,
-      taxRate: tax,
-      taxAmount,
-      totalAmount,
-      paymentStatus: "Paid",
-      paymentMethod,
-      invoiceNumber: "INV-" + String(seq).padStart(6, "0"),
-      cashier: req.user && req.user._id,
+      const subtotal = round2(lines.reduce((s, l) => s + l.total, 0));
+      const discountAmount = round2((subtotal * disc) / 100);
+      const taxAmount = round2(((subtotal - discountAmount) * tax) / 100);
+      const totalAmount = round2(subtotal - discountAmount + taxAmount);
+
+      const { rows: saleRows } = await db.query(
+        `insert into sales (invoice_number, customer_id, customer_name, subtotal, discount, discount_amount,
+                            tax_rate, tax_amount, total_amount, payment_status, payment_method, cashier_id)
+         values ('INV-' || lpad(nextval('invoice_seq')::text, 6, '0'), $1, $2, $3, $4, $5, $6, $7, $8, 'Paid', $9, $10)
+         returning id`,
+        [customer || null, custName, subtotal, disc, discountAmount, tax, taxAmount, totalAmount, paymentMethod,
+         req.user && isId(req.user._id) ? req.user._id : null]
+      );
+      const id = saleRows[0].id;
+      for (const l of lines) {
+        await db.query(
+          "insert into sale_items (sale_id, product_id, name, quantity, price, total) values ($1, $2, $3, $4, $5, $6)",
+          [id, l.productId, l.name, l.quantity, l.price, l.total]
+        );
+      }
+      return id;
     });
 
+    const [sale] = await loadSales({ query }, "where s.id = $1", [saleId]);
     res.status(201).json({ message: "Sale recorded", sale });
   } catch (error) {
+    if (error instanceof SaleError) return res.status(error.status).json({ message: error.message, ...error.extra });
     console.error("Error creating sale:", error);
-    await restock(deducted).catch((e) => console.error("RESTOCK FAILED, check stock manually:", e, deducted));
     res.status(500).json({ message: "Could not record the sale. Stock was not changed." });
   }
 });
@@ -108,28 +142,18 @@ router.post("/", async (req, res) => {
 // List sales, newest first.
 router.get("/", async (req, res) => {
   try {
-    const sales = await SalesTransaction.find().sort({ date: -1 })
-      .populate("customer", "name contactNumber")
-      .populate("items.product", "name"); // for older sales saved before item names were stored
-    res.status(200).json(sales);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching sales" });
-  }
+    res.status(200).json(await loadSales({ query }, "", []));
+  } catch (e) { dbError(res, e, "Error fetching sales"); }
 });
 
 // One sale (for the invoice page).
 router.get("/:id", async (req, res) => {
   if (!isId(req.params.id)) return res.status(404).json({ message: "Sale not found" });
   try {
-    const sale = await SalesTransaction.findById(req.params.id)
-      .populate("customer", "name contactNumber email address")
-      .populate("cashier", "firstName lastName")
-      .populate("items.product", "name");
+    const [sale] = await loadSales({ query }, "where s.id = $1", [req.params.id]);
     if (!sale) return res.status(404).json({ message: "Sale not found" });
     res.status(200).json(sale);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching sale" });
-  }
+  } catch (e) { dbError(res, e, "Error fetching sale"); }
 });
 
 // Void a sale: keeps the record (for audit), marks it voided and puts the stock back.
@@ -138,19 +162,28 @@ router.post("/:id/void", async (req, res) => {
   const reason = String((req.body && req.body.reason) || "").trim();
   if (!reason) return res.status(400).json({ message: "A reason is required to void a sale" });
   try {
-    // Atomic: only one request can flip a sale to Voided, so stock is never restored twice.
-    const sale = await SalesTransaction.findOneAndUpdate(
-      { _id: req.params.id, paymentStatus: { $ne: "Voided" } },
-      { paymentStatus: "Voided", voided: { at: new Date(), by: req.user && req.user._id, reason } },
-      { new: true }
-    );
-    if (!sale) {
-      const exists = await SalesTransaction.exists({ _id: req.params.id });
-      return res.status(exists ? 409 : 404).json({ message: exists ? "Sale is already voided" : "Sale not found" });
-    }
-    await restock(sale.items);
+    await tx(async (db) => {
+      const { rows } = await db.query(
+        `update sales set payment_status = 'Voided', voided_at = now(), voided_by = $2, void_reason = $3
+          where id = $1 and payment_status <> 'Voided' returning id`,
+        [req.params.id, req.user && isId(req.user._id) ? req.user._id : null, reason]
+      );
+      if (!rows[0]) {
+        const { rows: ex } = await db.query("select 1 from sales where id = $1", [req.params.id]);
+        throw new SaleError(ex[0] ? 409 : 404, ex[0] ? "Sale is already voided" : "Sale not found");
+      }
+      // Put stock back (skips products that have since been deleted).
+      await db.query(
+        `update products p set quantity = p.quantity + x.qty
+           from (select product_id, sum(quantity) as qty from sale_items where sale_id = $1 and product_id is not null group by product_id) x
+          where p.id = x.product_id`,
+        [req.params.id]
+      );
+    });
+    const [sale] = await loadSales({ query }, "where s.id = $1", [req.params.id]);
     res.json({ message: "Sale voided and stock restored", sale });
   } catch (error) {
+    if (error instanceof SaleError) return res.status(error.status).json({ message: error.message });
     console.error("Error voiding sale:", error);
     res.status(500).json({ message: "Error voiding sale" });
   }

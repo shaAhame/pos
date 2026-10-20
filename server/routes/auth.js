@@ -1,33 +1,29 @@
 const router = require("express").Router();
-const { User } = require("../models/user");
 const bcrypt = require("bcrypt");
 const Joi = require("joi");
+const { query } = require("../db");
+const { generateAuthToken } = require("../models/user");
 
-// Login route
+// Login
 router.post("/", async (req, res) => {
 	try {
-		// Validate the request body
 		const { error } = validate(req.body);
 		if (error) return res.status(400).send({ message: error.details[0].message });
 
-		// Find the user by email
-		const user = await User.findOne({ email: req.body.email });
+		const { rows } = await query("select * from users where lower(email) = lower($1)", [req.body.email]);
+		const user = rows[0];
 		if (!user) return res.status(401).send({ message: "Invalid Email or Password" });
 
-		// Check if the password is correct
 		const validPassword = await bcrypt.compare(req.body.password, user.password);
 		if (!validPassword) return res.status(401).send({ message: "Invalid Email or Password" });
 
-		// Generate authentication token
-		const token = user.generateAuthToken();
-		res.status(200).send({ data: token, message: "Logged in successfully" });
+		res.status(200).send({ data: generateAuthToken(user), message: "Logged in successfully" });
 	} catch (error) {
-		console.error("Login error:", error); // Log error for debugging
+		console.error("Login error:", error);
 		res.status(500).send({ message: "Internal Server Error" });
 	}
 });
 
-// Validation schema
 const validate = (data) => {
 	const schema = Joi.object({
 		email: Joi.string().email().required().label("Email"),
