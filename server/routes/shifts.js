@@ -7,6 +7,7 @@ const { atLeast } = require("../middleware/auth");
 const { fail } = require("../lib/errors");
 const { getSettings } = require("../lib/settings");
 const { dayRange } = require("../lib/dates");
+const { requireOneLocation, canAccessLocation } = require("../lib/location");
 
 // Money totals for one shift. Expected cash = float + cash sales - cash refunds.
 const shiftSummary = async (db, shift) => {
@@ -54,13 +55,15 @@ const shape = (row) => row && ({
   variance: row.variance,
   note: row.note,
   status: row.closed_at ? "closed" : "open",
+  location: row.location_id ? { _id: row.location_id, name: row.location_name } : null,
 });
 
 const SELECT = `select sh.*, u.first_name || ' ' || u.last_name as user_name,
-                       cb.first_name || ' ' || cb.last_name as closed_by_name
+                       cb.first_name || ' ' || cb.last_name as closed_by_name, lo.name as location_name
                   from shifts sh
                   join users u on u.id = sh.user_id
-                  left join users cb on cb.id = sh.closed_by`;
+                  left join users cb on cb.id = sh.closed_by
+                  left join locations lo on lo.id = sh.location_id`;
 
 const loadShift = async (db, shiftId) => (await db.query(`${SELECT} where sh.id = $1`, [shiftId])).rows[0];
 
@@ -75,9 +78,10 @@ router.post(
   "/open",
   validate(Joi.object({ openingFloat: money.default(0) })),
   async (req, res) => {
+    const loc = await requireOneLocation(req, { storeOnly: true });
     const { rows } = await query(
-      "insert into shifts (user_id, opening_float) values ($1, $2) returning id",
-      [req.user.id, req.body.openingFloat]
+      "insert into shifts (user_id, opening_float, location_id) values ($1, $2, $3) returning id",
+      [req.user.id, req.body.openingFloat, loc.id]
     ).catch((e) => {
       if (e.code === "23505") fail(409, "You already have an open shift");
       throw e;
@@ -97,6 +101,7 @@ router.post(
       const sh = rows[0];
       if (!sh) fail(404, "Shift not found");
       if (sh.user_id !== req.user.id && !atLeast(req.user, "manager")) fail(403, "You can only close your own shift");
+      if (sh.user_id !== req.user.id && !canAccessLocation(req.user, sh.location_id)) fail(403, "You can only close shifts in your own branch");
       if (sh.closed_at) fail(409, "This shift is already closed");
       const summary = await shiftSummary(db, sh);
       const variance = round2(req.body.countedCash - summary.expectedCash);
@@ -126,7 +131,9 @@ router.get(
     const where = [], params = [];
     const r = dayRange("sh.opened_at", q.from, q.to, timezone, 1);
     if (r.sql) { where.push(r.sql); params.push(...r.params); }
-    if (!atLeast(req.user, "manager")) { params.push(req.user.id); where.push(`sh.user_id = $${params.length}`); }
+    if (req.user.role === "cashier") { params.push(req.user.id); where.push(`sh.user_id = $${params.length}`); }
+    else if (req.user.role === "manager") { params.push(req.user.locationId); where.push(`sh.location_id = $${params.length}`); }
+    else if (req.location) { params.push(req.location.id); where.push(`sh.location_id = $${params.length}`); }
     if (q.status === "open") where.push("sh.closed_at is null");
     if (q.status === "closed") where.push("sh.closed_at is not null");
     const w = where.length ? "where " + where.join(" and ") : "";
@@ -140,6 +147,7 @@ router.get("/:id", validate(Joi.object({ id: id.required() }), "params"), async 
   const s = await loadShift({ query }, req.params.id);
   if (!s) fail(404, "Shift not found");
   if (s.user_id !== req.user.id && !atLeast(req.user, "manager")) fail(403, "You can only view your own shifts");
+  if (s.user_id !== req.user.id && !canAccessLocation(req.user, s.location_id)) fail(403, "You can only view shifts in your own branch");
   res.json({ ...shape(s), summary: await shiftSummary({ query }, s) });
 });
 

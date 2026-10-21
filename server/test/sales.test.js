@@ -6,9 +6,9 @@ const { db, setupShop, mkProduct, stockOf } = require("./helpers");
 let shop, milk, bread, eggs, cust, cashierShift;
 before(async () => {
   shop = await setupShop();
-  milk = await mkProduct(shop.manager, { name: "Milk", price: 250.5, quantity: 10, barcode: "111", costPrice: 200 });
-  bread = await mkProduct(shop.manager, { name: "Bread", price: 180, quantity: 5, costPrice: 150 });
-  eggs = await mkProduct(shop.manager, { name: "Eggs", price: 600, quantity: 3 });
+  milk = await mkProduct(shop.owner, { name: "Milk", price: 250.5, quantity: 10, barcode: "111", costPrice: 200 });
+  bread = await mkProduct(shop.owner, { name: "Bread", price: 180, quantity: 5, costPrice: 150 });
+  eggs = await mkProduct(shop.owner, { name: "Eggs", price: 600, quantity: 3 });
   cust = (await shop.cashier.post("/api/customers").send({ name: "Nimal", contactNumber: "0771234567" })).body;
 });
 after(() => db.close());
@@ -87,13 +87,13 @@ test("sale: oversell refused and nothing changes", async () => {
 });
 
 test("sale: archived products can't be sold", async () => {
-  const p = await mkProduct(shop.manager, { name: "Gone", price: 5, quantity: 5 });
-  await shop.manager.delete(`/api/products/${p._id}`);
+  const p = await mkProduct(shop.owner, { name: "Gone", price: 5, quantity: 5 });
+  await shop.owner.delete(`/api/products/${p._id}`);
   assert.equal((await sell(shop.cashier, { items: [{ product: p._id, quantity: 1 }] })).status, 409);
 });
 
 test("sale: two tills racing for the last items - exactly one wins", async () => {
-  const p = await mkProduct(shop.manager, { name: "Last One", price: 99, quantity: 2 });
+  const p = await mkProduct(shop.owner, { name: "Last One", price: 99, quantity: 2 });
   const results = await Promise.all([1, 2, 3, 4, 5].map(() => sell(shop.cashier, { items: [{ product: p._id, quantity: 2 }] })));
   assert.deepEqual(results.map((r) => r.status).sort(), [201, 409, 409, 409, 409]);
   assert.equal(await stockOf(p._id), 0);
@@ -111,7 +111,7 @@ test("sale: retries with the same clientRef record the sale only once", async ()
 });
 
 test("offline sync: records the sale even with a stock shortfall, keeps time and offline price, flags it", async () => {
-  const p = await mkProduct(shop.manager, { name: "Offline Item", price: 100, quantity: 2 });
+  const p = await mkProduct(shop.owner, { name: "Offline Item", price: 100, quantity: 2 });
   const when = new Date(Date.now() - 3600e3).toISOString();
   const res = await sell(shop.cashier, {
     clientRef: crypto.randomUUID(), offline: true, createdAt: when, shiftId: cashierShift._id,
@@ -170,7 +170,7 @@ test("void: manager only, restores stock, once only", async () => {
 });
 
 test("void of an offline shortfall sale only returns what was actually taken from stock", async () => {
-  const p = await mkProduct(shop.manager, { name: "Short", price: 10, quantity: 1 });
+  const p = await mkProduct(shop.owner, { name: "Short", price: 10, quantity: 1 });
   const s = (await sell(shop.cashier, { clientRef: crypto.randomUUID(), offline: true, items: [{ product: p._id, quantity: 3, price: 10, name: "Short" }] })).body.sale;
   assert.equal(await stockOf(p._id), 0);
   await shop.manager.post(`/api/sales/${s._id}/void`).send({ reason: "test" });
@@ -258,7 +258,7 @@ test("reports: summary, daily, top products, CSV", async () => {
   assert.equal(csv.status, 200);
   assert.match(csv.headers["content-type"], /text\/csv/);
   const lines = csv.text.replace(/^﻿/, "").split("\r\n");
-  assert.match(lines[0], /^Invoice,Date,Customer/);
+  assert.match(lines[0], /^Invoice,Date,Branch,Customer/);
   assert.ok(lines.length > 5);
 });
 

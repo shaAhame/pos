@@ -20,7 +20,7 @@ const loginLimiter = rateLimit({
   message: { message: "Too many login attempts. Wait 15 minutes and try again." },
 });
 
-const publicUser = (u) => ({ _id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email, role: u.role });
+const publicUser = (u) => ({ _id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email, role: u.role, locationId: u.location_id || null });
 
 // Is this a brand-new install with no accounts yet?
 router.get("/status", async (req, res) => {
@@ -72,7 +72,7 @@ router.post(
 
 // Current user
 router.get("/me", requireAuth, (req, res) => {
-  res.json({ _id: req.user.id, firstName: req.user.firstName, lastName: req.user.lastName, email: req.user.email, role: req.user.role });
+  res.json({ _id: req.user.id, firstName: req.user.firstName, lastName: req.user.lastName, email: req.user.email, role: req.user.role, locationId: req.user.locationId || null });
 });
 
 // Change own password

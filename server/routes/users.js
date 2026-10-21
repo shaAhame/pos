@@ -9,11 +9,26 @@ const { strongPassword, SALT } = require("./auth");
 const shape = (u) => ({
   _id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email,
   role: u.role, active: u.active, createdAt: u.created_at,
+  location: u.location_id ? { _id: u.location_id, name: u.location_name } : null,
 });
+const SELECT = "select u.*, l.name as location_name from users u left join locations l on l.id = u.location_id";
+
+// Cashiers and managers must belong to a branch. With only one branch, it's picked automatically.
+const resolveBranch = async (db, role, locationId) => {
+  if (role === "owner") return locationId || null;
+  if (locationId) {
+    const { rows } = await db.query("select id from locations where id = $1 and active", [locationId]);
+    if (!rows[0]) fail(400, "Branch not found or inactive");
+    return locationId;
+  }
+  const { rows } = await db.query("select id from locations where active order by created_at limit 2");
+  if (rows.length === 1) return rows[0].id;
+  fail(400, "Choose which branch this person works at");
+};
 const role = Joi.string().valid("owner", "manager", "cashier");
 
 router.get("/", async (req, res) => {
-  const { rows } = await query("select * from users order by active desc, role, first_name");
+  const { rows } = await query(`${SELECT} order by u.active desc, u.role, u.first_name`);
   res.json(rows.map(shape));
 });
 
@@ -23,14 +38,16 @@ router.post(
     firstName: text(60).required(), lastName: text(60).required(),
     email: Joi.string().trim().email().max(200).required(), password: strongPassword.required(),
     role: role.default("cashier"),
+    locationId: id.allow(null, "").empty(["", null]),
   })),
   async (req, res) => {
     const b = req.body;
+    const loc = await resolveBranch({ query }, b.role, b.locationId);
     const { rows } = await query(
-      "insert into users (first_name, last_name, email, password, role) values ($1,$2,$3,$4,$5) returning *",
-      [b.firstName, b.lastName, b.email, await bcrypt.hash(b.password, SALT()), b.role]
+      "insert into users (first_name, last_name, email, password, role, location_id) values ($1,$2,$3,$4,$5,$6) returning id",
+      [b.firstName, b.lastName, b.email, await bcrypt.hash(b.password, SALT()), b.role, loc]
     );
-    res.status(201).json(shape(rows[0]));
+    res.status(201).json(shape((await query(`${SELECT} where u.id = $1`, [rows[0].id])).rows[0]));
   }
 );
 
@@ -41,6 +58,7 @@ router.put(
   validate(Joi.object({
     firstName: text(60), lastName: text(60), email: Joi.string().trim().email().max(200),
     role, active: Joi.boolean(), password: strongPassword,
+    locationId: id.allow(null, ""),
   }).min(1)),
   async (req, res) => {
     const b = req.body;
@@ -62,8 +80,12 @@ router.put(
       if (b.role !== undefined) add("role", b.role);
       if (b.active !== undefined) add("active", b.active);
       if (b.password !== undefined) add("password", await bcrypt.hash(b.password, SALT()));
-      const { rows } = await db.query(`update users set ${sets.join(", ")} where id = $1 returning *`, vals);
-      return rows[0];
+      const newRole = b.role || cur[0].role;
+      if (b.locationId !== undefined || (b.role && b.role !== "owner" && !cur[0].location_id)) {
+        add("location_id", await resolveBranch(db, newRole, b.locationId || (b.locationId === undefined ? cur[0].location_id : null)));
+      }
+      const { rows } = await db.query(`update users set ${sets.join(", ")} where id = $1 returning id`, vals);
+      return (await db.query(`${SELECT} where u.id = $1`, [rows[0].id])).rows[0];
     });
     res.json(shape(user));
   }

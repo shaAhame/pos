@@ -8,6 +8,8 @@ const { getSettings } = require("../lib/settings");
 const { dayRange } = require("../lib/dates");
 const { likeParam } = require("../lib/crud");
 const { computeTotals, unitRefund, loadSales } = require("../lib/sales");
+const { moveStock, noteMovement } = require("../lib/stock");
+const { canAccessLocation } = require("../lib/location");
 
 const saleSchema = Joi.object({
   clientRef: id,                          // unique id made by the till; makes retries safe
@@ -59,18 +61,24 @@ router.post("/", validate(saleSchema), async (req, res) => {
   let saleId;
   try {
     saleId = await tx(async (db) => {
-      // Shift
-      let shiftId = null;
+      // Shift and branch: a sale happens in the branch of the shift it belongs to.
+      let shift = null;
       if (offline && b.shiftId) {
-        const { rows } = await db.query("select id from shifts where id = $1 and user_id = $2", [b.shiftId, user.id]);
-        if (rows[0]) shiftId = rows[0].id;
+        const { rows } = await db.query("select id, location_id from shifts where id = $1 and user_id = $2", [b.shiftId, user.id]);
+        shift = rows[0] || null;
       }
-      if (!shiftId) {
-        const { rows } = await db.query("select id from shifts where user_id = $1 and closed_at is null", [user.id]);
-        if (rows[0]) shiftId = rows[0].id;
-        else if (!offline) fail(409, "Open a shift before selling", { code: "SHIFT_REQUIRED" });
-        else notes.push("No open shift when synced");
+      if (!shift) {
+        const { rows } = await db.query("select id, location_id from shifts where user_id = $1 and closed_at is null", [user.id]);
+        shift = rows[0] || null;
+        if (!shift && !offline) fail(409, "Open a shift before selling", { code: "SHIFT_REQUIRED" });
+        if (!shift) notes.push("No open shift when synced");
       }
+      let locationId = shift?.location_id || user.locationId || req.location?.id || null;
+      if (!locationId) {
+        const { rows } = await db.query("select id from locations where active and type = 'store' order by created_at limit 1");
+        locationId = rows[0].id;
+      }
+      const shiftId = shift?.id || null;
 
       // Customer
       let customerId = null;
@@ -81,10 +89,17 @@ router.post("/", validate(saleSchema), async (req, res) => {
         else if (!offline) fail(400, "Customer not found");
       }
 
-      // Lock all products in a fixed order (prevents deadlocks between tills).
+      // Lock this branch's stock rows in a fixed order (prevents deadlocks between tills).
       const ids = [...wanted.keys()].sort();
+      await db.query(
+        `insert into product_stock (product_id, location_id, quantity)
+           select id, $2, 0 from products where id = any($1::uuid[]) on conflict do nothing`,
+        [ids, locationId]
+      );
       const { rows: prods } = await db.query(
-        "select * from products where id = any($1::uuid[]) order by id for update", [ids]
+        `select p.*, ps.quantity from product_stock ps join products p on p.id = ps.product_id
+          where ps.location_id = $2 and ps.product_id = any($1::uuid[]) order by ps.product_id for update of ps`,
+        [ids, locationId]
       );
       const byId = new Map(prods.map((p) => [p.id, p]));
 
@@ -140,12 +155,12 @@ router.post("/", validate(saleSchema), async (req, res) => {
       const { rows: [sale] } = await db.query(
         `insert into sales (invoice_number, client_ref, customer_id, customer_name, subtotal, discount, discount_amount,
                             tax_rate, tax_amount, total_amount, payment_status, payment_method, amount_tendered, change_given,
-                            cashier_id, shift_id, offline, offline_note, synced_at, date)
-         values ('INV-' || lpad(nextval('invoice_seq')::text, 6, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,'Paid',$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                            cashier_id, shift_id, offline, offline_note, synced_at, date, location_id)
+         values ('INV-' || lpad(nextval('invoice_seq')::text, 6, '0'), $1,$2,$3,$4,$5,$6,$7,$8,$9,'Paid',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          returning id`,
         [b.clientRef || null, customerId, customerName, t.subtotal, b.discount, t.discountAmount, b.taxRate, t.taxAmount,
          t.totalAmount, b.paymentMethod, tendered, change, user.id, shiftId, offline, notes.length ? notes.join("; ") : null,
-         offline ? new Date() : null, date]
+         offline ? new Date() : null, date, locationId]
       );
 
       for (const l of lines) {
@@ -155,20 +170,11 @@ router.post("/", validate(saleSchema), async (req, res) => {
         );
         if (!l.productId) continue;
         if (l.deduct > 0) {
-          const { rows: [up] } = await db.query(
-            "update products set quantity = quantity - $2 where id = $1 returning quantity", [l.productId, l.deduct]
-          );
-          await db.query(
-            `insert into stock_movements (product_id, change, quantity_after, reason, sale_id, user_id) values ($1,$2,$3,'sale',$4,$5)`,
-            [l.productId, -l.deduct, up.quantity, sale.id, user.id]
-          );
+          await moveStock(db, { productId: l.productId, locationId, change: -l.deduct, reason: "sale", saleId: sale.id, userId: user.id });
         }
         if (l.shortfall > 0) {
-          await db.query(
-            `insert into stock_movements (product_id, change, quantity_after, reason, sale_id, note, user_id)
-             values ($1, 0, 0, 'offline_shortfall', $2, $3, $4)`,
-            [l.productId, sale.id, `Sold ${l.shortfall} more than recorded stock while offline - recount this product`, user.id]
-          );
+          await noteMovement(db, { productId: l.productId, locationId, reason: "offline_shortfall", saleId: sale.id, userId: user.id,
+            note: `Sold ${l.shortfall} more than recorded stock while offline - recount this product` });
         }
       }
       return sale.id;
@@ -196,6 +202,7 @@ router.get(
     payment: Joi.string().valid("all", "Cash", "Card").default("all"),
     offline: Joi.boolean(),
     shiftId: id,
+    locationId: id,
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(500).default(25),
   }), "query"),
@@ -211,7 +218,9 @@ router.get(
     if (q.payment !== "all") add((p) => `s.payment_method = ${p}`, q.payment);
     if (q.offline !== undefined) add((p) => `s.offline = ${p}`, q.offline);
     if (q.shiftId) add((p) => `s.shift_id = ${p}`, q.shiftId);
-    if (!atLeast(req.user, "manager")) add((p) => `s.cashier_id = ${p}`, req.user.id);
+    if (req.user.role === "cashier") add((p) => `s.cashier_id = ${p}`, req.user.id);
+    else if (req.user.role === "manager") add((p) => `s.location_id = ${p}`, req.user.locationId);
+    else if (q.locationId || req.location) add((p) => `s.location_id = ${p}`, q.locationId || req.location.id);
     const w = where.length ? "where " + where.join(" and ") : "";
     const total = (await query(`select count(*)::int n from sales s ${w}`, params)).rows[0].n;
     const sales = await loadSales({ query }, w, params, {
@@ -224,7 +233,8 @@ router.get(
 router.get("/:id", validate(Joi.object({ id: id.required() }), "params"), async (req, res) => {
   const [sale] = await loadSales({ query }, "where s.id = $1", [req.params.id], { withReturns: true });
   if (!sale) fail(404, "Sale not found");
-  if (!atLeast(req.user, "manager") && sale.cashier?._id !== req.user.id) fail(403, "You can only view your own sales");
+  if (req.user.role === "cashier" && sale.cashier?._id !== req.user.id) fail(403, "You can only view your own sales");
+  if (req.user.role === "manager" && sale.location?._id !== req.user.locationId) fail(403, "You can only view your own branch's sales");
   res.json(sale);
 });
 
@@ -242,6 +252,7 @@ router.post(
         [req.params.id]
       );
       if (!s) fail(404, "Sale not found");
+      if (!canAccessLocation(req.user, s.location_id)) fail(403, "You can only void sales in your own branch");
       if (s.payment_status === "Voided") fail(409, "Sale is already voided");
       if (s.shift_closed_at) fail(409, "This sale's shift is already closed. Use a return instead.");
       if (!s.shift_id && Date.now() - new Date(s.date).getTime() > 24 * 3600e3) fail(409, "Sales older than a day can't be voided. Use a return instead.");
@@ -252,24 +263,15 @@ router.post(
         "update sales set payment_status = 'Voided', voided_at = now(), voided_by = $2, void_reason = $3 where id = $1",
         [s.id, req.user.id, req.body.reason]
       );
-      // Put back exactly what the sale took from stock (per its stock movements).
+      // Put back exactly what the sale took from stock, in the branch it was taken from.
       const { rows: taken } = await db.query(
-        `select product_id, -sum(change)::int as qty from stock_movements
-          where sale_id = $1 and reason = 'sale' group by product_id order by product_id`,
+        `select product_id, location_id, -sum(change)::int as qty from stock_movements
+          where sale_id = $1 and reason = 'sale' group by product_id, location_id order by product_id`,
         [s.id]
       );
       for (const t of taken) {
         if (t.qty <= 0) continue;
-        const { rows: [up] } = await db.query(
-          "update products set quantity = quantity + $2 where id = $1 returning quantity", [t.product_id, t.qty]
-        );
-        if (up) {
-          await db.query(
-            `insert into stock_movements (product_id, change, quantity_after, reason, sale_id, note, user_id)
-             values ($1,$2,$3,'void',$4,$5,$6)`,
-            [t.product_id, t.qty, up.quantity, s.id, req.body.reason, req.user.id]
-          );
-        }
+        await moveStock(db, { productId: t.product_id, locationId: t.location_id, change: t.qty, reason: "void", saleId: s.id, note: req.body.reason, userId: req.user.id });
       }
     });
     const [sale] = await loadSales({ query }, "where s.id = $1", [req.params.id], { withReturns: true });
@@ -296,11 +298,14 @@ router.post(
     const result = await tx(async (db) => {
       const { rows: [s] } = await db.query("select * from sales where id = $1 for update", [req.params.id]);
       if (!s) fail(404, "Sale not found");
+      if (!canAccessLocation(req.user, s.location_id)) fail(403, "You can only take returns for your own branch's sales");
       if (s.payment_status === "Voided") fail(409, "This sale was voided; nothing to return");
       const refundMethod = b.refundMethod || s.payment_method;
 
-      const { rows: shiftRows } = await db.query("select id from shifts where user_id = $1 and closed_at is null", [req.user.id]);
+      const { rows: shiftRows } = await db.query("select id, location_id from shifts where user_id = $1 and closed_at is null", [req.user.id]);
       const shiftId = shiftRows[0]?.id || null;
+      // Goods go back on the shelf where the return happens (owner may take a return at another branch).
+      const returnLocation = shiftRows[0]?.location_id || (req.user.role === "owner" && req.location?.type === "store" ? req.location.id : null) || s.location_id;
       if (refundMethod === "Cash" && !shiftId) fail(409, "Open a shift before giving a cash refund (the cash comes from your drawer)", { code: "SHIFT_REQUIRED" });
 
       const { rows: items } = await db.query("select * from sale_items where sale_id = $1 for update", [s.id]);
@@ -327,9 +332,9 @@ router.post(
       if (allBack || refundAmount > s.total_amount - refunded) refundAmount = round2(s.total_amount - refunded);
 
       const { rows: [ret] } = await db.query(
-        `insert into returns (return_number, sale_id, user_id, shift_id, reason, refund_method, refund_amount)
-         values ('RET-' || lpad(nextval('return_seq')::text, 6, '0'), $1,$2,$3,$4,$5,$6) returning *`,
-        [s.id, req.user.id, shiftId, b.reason, refundMethod, refundAmount]
+        `insert into returns (return_number, sale_id, user_id, shift_id, reason, refund_method, refund_amount, location_id)
+         values ('RET-' || lpad(nextval('return_seq')::text, 6, '0'), $1,$2,$3,$4,$5,$6,$7) returning *`,
+        [s.id, req.user.id, shiftId, b.reason, refundMethod, refundAmount, returnLocation]
       );
       for (const l of lines) {
         await db.query("update sale_items set returned_quantity = returned_quantity + $2 where id = $1", [l.si.id, l.quantity]);
@@ -338,16 +343,7 @@ router.post(
           [ret.id, l.si.id, l.si.product_id, l.si.name, l.quantity, l.amount, l.restock]
         );
         if (l.restock && l.si.product_id) {
-          const { rows: [up] } = await db.query(
-            "update products set quantity = quantity + $2 where id = $1 returning quantity", [l.si.product_id, l.quantity]
-          );
-          if (up) {
-            await db.query(
-              `insert into stock_movements (product_id, change, quantity_after, reason, sale_id, return_id, note, user_id)
-               values ($1,$2,$3,'return',$4,$5,$6,$7)`,
-              [l.si.product_id, l.quantity, up.quantity, s.id, ret.id, b.reason, req.user.id]
-            );
-          }
+          await moveStock(db, { productId: l.si.product_id, locationId: returnLocation, change: l.quantity, reason: "return", saleId: s.id, returnId: ret.id, note: b.reason, userId: req.user.id });
         }
       }
       return ret;

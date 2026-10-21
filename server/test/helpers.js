@@ -57,6 +57,8 @@ const mkProduct = async (user, data) => {
   return res.body;
 };
 
-const stockOf = async (id) => (await db.query("select quantity from products where id = $1", [id])).rows[0].quantity;
+// Stock of a product at one branch (or all branches added together).
+const stockOf = async (id, locationId = null) =>
+  (await db.query("select coalesce(sum(quantity),0)::int q from product_stock where product_id = $1 and ($2::uuid is null or location_id = $2::uuid)", [id, locationId])).rows[0].q;
 
 module.exports = { db, app, request, resetDb, setupShop, as, mkProduct, stockOf, PASSWORD };

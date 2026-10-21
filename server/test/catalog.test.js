@@ -7,21 +7,21 @@ before(async () => { shop = await setupShop(); });
 after(() => db.close());
 
 test("products: create, validation, unique barcode, blank barcodes don't clash", async () => {
-  const { manager } = shop;
-  const p = await mkProduct(manager, { name: "Milk", price: "250.50", quantity: 10, barcode: "111", costPrice: 200 });
+  const { owner, manager } = shop;
+  const p = await mkProduct(owner, { name: "Milk", price: "250.50", quantity: 10, barcode: "111", costPrice: 200 });
   assert.equal(p.price, 250.5);
   assert.equal(p.quantity, 10);
-  await mkProduct(manager, { name: "Bread", price: 180, barcode: "" });
-  await mkProduct(manager, { name: "Buns", price: 50 });
-  assert.equal((await manager.post("/api/products").send({ name: "X", category: "C", price: 1, barcode: "111" })).status, 409);
-  assert.equal((await manager.post("/api/products").send({ name: "X", category: "C", price: -1 })).status, 400);
-  assert.equal((await manager.post("/api/products").send({ category: "C", price: 1 })).status, 400);
-  assert.equal((await manager.post("/api/products").send({ name: "X", category: "C", price: 1, quantity: 1.5 })).status, 400);
+  await mkProduct(owner, { name: "Bread", price: 180, barcode: "" });
+  await mkProduct(owner, { name: "Buns", price: 50 });
+  assert.equal((await owner.post("/api/products").send({ name: "X", category: "C", price: 1, barcode: "111" })).status, 409);
+  assert.equal((await owner.post("/api/products").send({ name: "X", category: "C", price: -1 })).status, 400);
+  assert.equal((await owner.post("/api/products").send({ category: "C", price: 1 })).status, 400);
+  assert.equal((await owner.post("/api/products").send({ name: "X", category: "C", price: 1, quantity: 1.5 })).status, 400);
 });
 
 test("products: opening stock is recorded in stock history", async () => {
-  const { manager } = shop;
-  const p = await mkProduct(manager, { name: "Rice 5kg", price: 1500, quantity: 7 });
+  const { owner, manager } = shop;
+  const p = await mkProduct(owner, { name: "Rice 5kg", price: 1500, quantity: 7 });
   const mv = (await manager.get(`/api/products/${p._id}/movements`)).body;
   assert.equal(mv.length, 1);
   assert.equal(mv[0].reason, "initial");
@@ -29,9 +29,9 @@ test("products: opening stock is recorded in stock history", async () => {
 });
 
 test("products: editing details never touches stock or wipes other fields", async () => {
-  const { manager } = shop;
-  const p = await mkProduct(manager, { name: "Soap", price: 100, quantity: 5, barcode: "SOAP1", costPrice: 60 });
-  const res = await manager.put(`/api/products/${p._id}`).send({ price: 120, quantity: 999 });
+  const { owner, manager } = shop;
+  const p = await mkProduct(owner, { name: "Soap", price: 100, quantity: 5, barcode: "SOAP1", costPrice: 60 });
+  const res = await owner.put(`/api/products/${p._id}`).send({ price: 120, quantity: 999 });
   assert.equal(res.status, 200);
   assert.equal(res.body.price, 120);
   assert.equal(res.body.barcode, "SOAP1");
@@ -48,7 +48,7 @@ test("products: cashiers can't see cost price", async () => {
 });
 
 test("products: list paging, sorting, search and SQL-injection safety", async () => {
-  const { manager } = shop;
+  const { owner, manager } = shop;
   const res = await manager.get("/api/products").query({ limit: 2, sortBy: "price", order: "desc" });
   assert.equal(res.body.products.length, 2);
   assert.ok(res.body.products[0].price >= res.body.products[1].price);
@@ -61,21 +61,21 @@ test("products: list paging, sorting, search and SQL-injection safety", async ()
 });
 
 test("products: barcode lookup, archive hides from till but keeps record", async () => {
-  const { manager, cashier } = shop;
-  const p = await mkProduct(manager, { name: "Old Item", price: 10, quantity: 1, barcode: "OLD1" });
+  const { owner, manager, cashier } = shop;
+  const p = await mkProduct(owner, { name: "Old Item", price: 10, quantity: 1, barcode: "OLD1" });
   assert.equal((await cashier.get("/api/products/barcode/OLD1")).body.name, "Old Item");
-  assert.equal((await manager.delete(`/api/products/${p._id}`)).status, 200);
+  assert.equal((await owner.delete(`/api/products/${p._id}`)).status, 200);
   assert.equal((await cashier.get("/api/products/barcode/OLD1")).status, 404);
   const archived = (await manager.get("/api/products").query({ status: "archived" })).body.products;
   assert.ok(archived.some((x) => x._id === p._id));
-  await manager.put(`/api/products/${p._id}`).send({ active: true });
+  await owner.put(`/api/products/${p._id}`).send({ active: true });
   assert.equal((await cashier.get("/api/products/barcode/OLD1")).status, 200);
 });
 
 test("stock: receive from supplier updates cost and history", async () => {
-  const { manager } = shop;
+  const { owner, manager } = shop;
   const sup = (await manager.post("/api/suppliers").send({ name: "Sun", company: "Sun Ltd", contactNumber: "011 222 3333", email: "s@sun.lk", address: "Colombo" })).body;
-  const p = await mkProduct(manager, { name: "Tea 100g", price: 400, quantity: 2 });
+  const p = await mkProduct(owner, { name: "Tea 100g", price: 400, quantity: 2 });
   const res = await manager.post(`/api/products/${p._id}/stock`).send({ type: "receive", quantity: 24, supplierId: sup._id, unitCost: 310 });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal(res.body.quantity, 26);
@@ -87,8 +87,8 @@ test("stock: receive from supplier updates cost and history", async () => {
 });
 
 test("stock: stock-take adjustment needs a note and records the difference", async () => {
-  const { manager, cashier } = shop;
-  const p = await mkProduct(manager, { name: "Sugar 1kg", price: 300, quantity: 10 });
+  const { owner, manager, cashier } = shop;
+  const p = await mkProduct(owner, { name: "Sugar 1kg", price: 300, quantity: 10 });
   assert.equal((await manager.post(`/api/products/${p._id}/stock`).send({ type: "adjust", quantity: 8 })).status, 400);
   const res = await manager.post(`/api/products/${p._id}/stock`).send({ type: "adjust", quantity: 8, note: "2 damaged" });
   assert.equal(res.body.quantity, 8);
@@ -99,8 +99,8 @@ test("stock: stock-take adjustment needs a note and records the difference", asy
 });
 
 test("low-stock report", async () => {
-  const { manager } = shop;
-  await mkProduct(manager, { name: "Almost Gone", price: 5, quantity: 1, lowStockThreshold: 3 });
+  const { owner, manager } = shop;
+  await mkProduct(owner, { name: "Almost Gone", price: 5, quantity: 1, lowStockThreshold: 3 });
   const low = (await manager.get("/api/reports/low-stock")).body;
   assert.ok(low.some((p) => p.name === "Almost Gone"));
   assert.ok(!low.some((p) => p.name === "Milk"));

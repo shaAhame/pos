@@ -4,6 +4,7 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const { requireAuth, requireRole } = require("./middleware/auth");
+const { withLocation } = require("./lib/location");
 const { errorHandler } = require("./lib/errors");
 const { query } = require("./lib/db");
 
@@ -31,8 +32,10 @@ const people = require("./routes/people");
 
 app.use("/api/auth", authRouter);
 
-// Everything below needs a logged-in, active user.
-app.use("/api", requireAuth);
+// Everything below needs a logged-in, active user (and knows which branch the request is about).
+app.use("/api", requireAuth, withLocation);
+app.use("/api/locations", require("./routes/locations"));
+app.use("/api/transfers", require("./routes/transfers"));
 app.use("/api/settings", require("./routes/settings"));
 app.use("/api/users", requireRole("owner"), require("./routes/users"));
 app.use("/api/employees", people.employees);

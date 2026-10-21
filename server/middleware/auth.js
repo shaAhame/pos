@@ -21,12 +21,12 @@ const requireAuth = async (req, res, next) => {
   }
   // Look the user up every time so deactivated users and role changes take effect immediately.
   const { rows } = await query(
-    "select id, first_name, last_name, email, role, active from users where id = $1",
+    "select id, first_name, last_name, email, role, active, location_id from users where id = $1",
     [payload.sub]
   );
   const u = rows[0];
   if (!u || !u.active) return res.status(401).json({ message: "Your account is disabled. Ask the owner." });
-  req.user = { id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email, role: u.role };
+  req.user = { id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email, role: u.role, locationId: u.location_id };
   next();
 };
 

@@ -18,11 +18,13 @@ const SALE_SELECT = `
          c.name as c_name, c.contact_number as c_contact, c.email as c_email, c.address as c_address,
          u.first_name as u_first, u.last_name as u_last,
          vb.first_name || ' ' || vb.last_name as voided_by_name,
+         lo.name as lo_name, lo.address as lo_address, lo.phone as lo_phone,
          (select coalesce(sum(refund_amount), 0) from returns r where r.sale_id = s.id) as refunded_amount
     from sales s
     left join customers c on c.id = s.customer_id
     left join users u on u.id = s.cashier_id
-    left join users vb on vb.id = s.voided_by`;
+    left join users vb on vb.id = s.voided_by
+    left join locations lo on lo.id = s.location_id`;
 
 const shapeSale = (s, items = [], returns = []) => ({
   _id: s.id,
@@ -51,6 +53,7 @@ const shapeSale = (s, items = [], returns = []) => ({
     : items.some((i) => i.returned_quantity > 0) ? "Partially returned" : null,
   cashier: s.cashier_id ? { _id: s.cashier_id, firstName: s.u_first, lastName: s.u_last } : null,
   shiftId: s.shift_id,
+  location: s.location_id ? { _id: s.location_id, name: s.lo_name, address: s.lo_address, phone: s.lo_phone } : null,
   offline: s.offline,
   offlineNote: s.offline_note,
   voided: s.voided_at ? { at: s.voided_at, by: s.voided_by, byName: s.voided_by_name, reason: s.void_reason } : undefined,

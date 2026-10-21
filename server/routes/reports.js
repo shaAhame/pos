@@ -5,21 +5,31 @@ const { round2, toApi } = require("../lib/util");
 const { Joi, validate, day } = require("../lib/validate");
 const { getSettings } = require("../lib/settings");
 const { dayRange } = require("../lib/dates");
+const { canAccessLocation } = require("../lib/location");
+const { fail } = require("../lib/errors");
+const { id } = require("../lib/validate");
+
+// Which branch a report covers: managers -> their own; owner -> ?locationId, the chosen branch, or all (null).
+const scope = (req, q) => {
+  if (req.user.role !== "owner") return req.user.locationId;
+  if (q.locationId) { if (!canAccessLocation(req.user, q.locationId)) fail(403, "Not allowed"); return q.locationId; }
+  return req.location?.id || null;
+};
 
 const today = (tz) => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date()); // YYYY-MM-DD
 
-const rangeQuery = Joi.object({ from: day, to: day, limit: Joi.number().integer().min(1).max(100).default(10) });
+const rangeQuery = Joi.object({ from: day, to: day, limit: Joi.number().integer().min(1).max(100).default(10), locationId: id });
 
-const resolveRange = async (q) => {
+const resolveRange = async (req, q) => {
   const { timezone } = await getSettings();
   const to = q.to || today(timezone);
   const from = q.from || to;
   if (from > to) return { error: "'from' must be on or before 'to'" };
-  return { from, to, tz: timezone };
+  return { from, to, tz: timezone, loc: scope(req, q) };
 };
 
 router.get("/summary", validate(rangeQuery, "query"), async (req, res) => {
-  const r = await resolveRange(req.validQuery);
+  const r = await resolveRange(req, req.validQuery);
   if (r.error) return res.status(400).json({ message: r.error });
   const sr = dayRange("s.date", r.from, r.to, r.tz, 1);
   const { rows: [s] } = await query(
@@ -32,13 +42,14 @@ router.get("/summary", validate(rangeQuery, "query"), async (req, res) => {
             count(*) filter (where payment_status = 'Voided')::int as void_count,
             coalesce(sum(total_amount) filter (where payment_status = 'Voided'), 0) as void_total,
             count(*) filter (where offline and offline_note is not null)::int as offline_review_count
-       from sales s where ${sr.sql}`,
-    sr.params
+       from sales s where ${sr.sql} and ($${sr.next}::uuid is null or s.location_id = $${sr.next}::uuid)`,
+    [...sr.params, r.loc]
   );
   const rr = dayRange("r.created_at", r.from, r.to, r.tz, 1);
   const { rows: [ret] } = await query(
-    `select count(*)::int as return_count, coalesce(sum(refund_amount), 0) as refunds from returns r where ${rr.sql}`,
-    rr.params
+    `select count(*)::int as return_count, coalesce(sum(refund_amount), 0) as refunds from returns r
+      where ${rr.sql} and ($${rr.next}::uuid is null or r.location_id = $${rr.next}::uuid)`,
+    [...rr.params, r.loc]
   );
   // Profit: revenue net of discount (before tax) minus cost, for items that have a cost price.
   const { rows: [p] } = await query(
@@ -47,17 +58,17 @@ router.get("/summary", validate(rangeQuery, "query"), async (req, res) => {
             coalesce(sum(i.quantity - i.returned_quantity), 0)::int as items_sold,
             count(*) filter (where i.cost_price is null)::int as lines_without_cost
        from sale_items i join sales s on s.id = i.sale_id
-      where s.payment_status = 'Paid' and ${sr.sql}`,
-    sr.params
+      where s.payment_status = 'Paid' and ${sr.sql} and ($${sr.next}::uuid is null or s.location_id = $${sr.next}::uuid)`,
+    [...sr.params, r.loc]
   );
   const { rows: [costed] } = await query(
     `select coalesce(sum((i.quantity - i.returned_quantity) * i.price * (1 - s.discount / 100)), 0) as revenue
        from sale_items i join sales s on s.id = i.sale_id
-      where s.payment_status = 'Paid' and i.cost_price is not null and ${sr.sql}`,
-    sr.params
+      where s.payment_status = 'Paid' and i.cost_price is not null and ${sr.sql} and ($${sr.next}::uuid is null or s.location_id = $${sr.next}::uuid)`,
+    [...sr.params, r.loc]
   );
   res.json({
-    from: r.from, to: r.to,
+    from: r.from, to: r.to, locationId: r.loc,
     salesCount: s.sales_count,
     grossSales: s.gross_sales,
     refunds: ret.refunds,
@@ -79,7 +90,7 @@ router.get("/summary", validate(rangeQuery, "query"), async (req, res) => {
 
 // One row per day (for the chart).
 router.get("/daily", validate(rangeQuery, "query"), async (req, res) => {
-  const r = await resolveRange(req.validQuery);
+  const r = await resolveRange(req, req.validQuery);
   if (r.error) return res.status(400).json({ message: r.error });
   const { rows } = await query(
     `with days as (
@@ -87,14 +98,14 @@ router.get("/daily", validate(rangeQuery, "query"), async (req, res) => {
      ),
      s as (
        select (date at time zone $3)::date as day, count(*)::int as n, sum(total_amount) as total
-         from sales where payment_status = 'Paid'
+         from sales where payment_status = 'Paid' and ($4::uuid is null or location_id = $4::uuid)
           and date >= ($1::date)::timestamp at time zone $3 and date < ($2::date + 1)::timestamp at time zone $3
         group by 1
      ),
      r as (
        select (created_at at time zone $3)::date as day, sum(refund_amount) as refunds
          from returns
-        where created_at >= ($1::date)::timestamp at time zone $3 and created_at < ($2::date + 1)::timestamp at time zone $3
+        where ($4::uuid is null or location_id = $4::uuid) and created_at >= ($1::date)::timestamp at time zone $3 and created_at < ($2::date + 1)::timestamp at time zone $3
         group by 1
      )
      select to_char(d.day, 'YYYY-MM-DD') as day, coalesce(s.n, 0) as sales_count,
@@ -102,14 +113,14 @@ router.get("/daily", validate(rangeQuery, "query"), async (req, res) => {
             coalesce(s.total, 0) - coalesce(r.refunds, 0) as net_sales
        from days d left join s on s.day = d.day left join r on r.day = d.day
       order by d.day`,
-    [r.from, r.to, r.tz]
+    [r.from, r.to, r.tz, r.loc]
   );
   if (rows.length > 400) return res.status(400).json({ message: "Pick a range of 400 days or less" });
   res.json(rows.map((x) => toApi(x)));
 });
 
 router.get("/top-products", validate(rangeQuery, "query"), async (req, res) => {
-  const r = await resolveRange(req.validQuery);
+  const r = await resolveRange(req, req.validQuery);
   if (r.error) return res.status(400).json({ message: r.error });
   const sr = dayRange("s.date", r.from, r.to, r.tz, 1);
   const { rows } = await query(
@@ -117,45 +128,80 @@ router.get("/top-products", validate(rangeQuery, "query"), async (req, res) => {
             sum(i.quantity - i.returned_quantity)::int as quantity,
             sum((i.quantity - i.returned_quantity) * i.price) as revenue
        from sale_items i join sales s on s.id = i.sale_id
-      where s.payment_status = 'Paid' and ${sr.sql}
+      where s.payment_status = 'Paid' and ${sr.sql} and ($${sr.next}::uuid is null or s.location_id = $${sr.next}::uuid)
       group by 1, i.product_id
      having sum(i.quantity - i.returned_quantity) > 0
       order by revenue desc
       limit ${req.validQuery.limit}`,
-    sr.params
+    [...sr.params, r.loc]
   );
   res.json(rows.map((x) => ({ productId: x.product_id, name: x.name, quantity: x.quantity, revenue: round2(x.revenue) })));
 });
 
-router.get("/low-stock", async (req, res) => {
+// Products at or below their warning level, per branch.
+router.get("/low-stock", validate(Joi.object({ locationId: id }), "query"), async (req, res) => {
+  const loc = scope(req, req.validQuery);
   const { rows } = await query(
-    `select * from products where active and quantity <= low_stock_threshold order by quantity, name limit 200`
+    `select p.id, p.name, p.category, p.low_stock_threshold, ps.quantity, l.id as location_id, l.name as location_name
+       from product_stock ps
+       join products p on p.id = ps.product_id
+       join locations l on l.id = ps.location_id
+      where p.active and l.active and ps.quantity <= p.low_stock_threshold
+        and ($1::uuid is null or l.id = $1::uuid)
+      order by ps.quantity, p.name, l.name
+      limit 300`,
+    [loc]
+  );
+  res.json(rows.map((x) => toApi(x)));
+});
+
+// Owner: compare branches side by side.
+router.get("/by-location", validate(rangeQuery, "query"), async (req, res) => {
+  if (req.user.role !== "owner") return res.status(403).json({ message: "Only the owner can compare branches" });
+  const r = await resolveRange(req, req.validQuery);
+  if (r.error) return res.status(400).json({ message: r.error });
+  const sr = dayRange("s.date", r.from, r.to, r.tz, 1);
+  const rr = dayRange("r.created_at", r.from, r.to, r.tz, 1);
+  const { rows } = await query(
+    `select l.id, l.name, l.type,
+            coalesce(s.n, 0)::int as sales_count, coalesce(s.total, 0) as gross_sales,
+            coalesce(rt.refunds, 0) as refunds, coalesce(s.total, 0) - coalesce(rt.refunds, 0) as net_sales,
+            (select coalesce(sum(ps.quantity * coalesce(p.cost_price, 0)), 0) from product_stock ps join products p on p.id = ps.product_id
+              where ps.location_id = l.id and p.active) as stock_value_at_cost
+       from locations l
+       left join (select location_id, count(*) as n, sum(total_amount) as total from sales s
+                   where s.payment_status = 'Paid' and ${sr.sql} group by location_id) s on s.location_id = l.id
+       left join (select location_id, sum(refund_amount) as refunds from returns r
+                   where ${rr.sql.replace(/\$(\d+)/g, (_, n) => "$" + (Number(n) + sr.params.length))} group by location_id) rt on rt.location_id = l.id
+      where l.active
+      order by l.type desc, net_sales desc`,
+    [...sr.params, ...rr.params]
   );
   res.json(rows.map((x) => toApi(x)));
 });
 
 // CSV export of sales (one row per sale), for Excel / accountant.
 router.get("/sales.csv", validate(rangeQuery, "query"), async (req, res) => {
-  const r = await resolveRange(req.validQuery);
+  const r = await resolveRange(req, req.validQuery);
   if (r.error) return res.status(400).json({ message: r.error });
   const sr = dayRange("s.date", r.from, r.to, r.tz, 1);
   const { rows } = await query(
     `select s.invoice_number, to_char(s.date at time zone $${sr.next}, 'YYYY-MM-DD HH24:MI') as local_time,
             s.customer_name, s.payment_method, s.payment_status, s.subtotal, s.discount_amount, s.tax_amount, s.total_amount,
             (select coalesce(sum(refund_amount),0) from returns r where r.sale_id = s.id) as refunded,
-            coalesce(u.first_name || ' ' || u.last_name, '') as cashier, s.offline,
+            coalesce(u.first_name || ' ' || u.last_name, '') as cashier, s.offline, coalesce(lo.name, '') as branch,
             (select string_agg(i.name || ' x' || i.quantity, '; ' order by i.name) from sale_items i where i.sale_id = s.id) as items
-       from sales s left join users u on u.id = s.cashier_id
-      where ${sr.sql} order by s.date`,
-    [...sr.params, r.tz]
+       from sales s left join users u on u.id = s.cashier_id left join locations lo on lo.id = s.location_id
+      where ${sr.sql} and ($${sr.next + 1}::uuid is null or s.location_id = $${sr.next + 1}::uuid) order by s.date`,
+    [...sr.params, r.tz, r.loc]
   );
   const esc = (v) => {
     let s = v === null || v === undefined ? "" : String(v);
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;           // stop Excel formula injection
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = ["Invoice", "Date", "Customer", "Payment", "Status", "Subtotal", "Discount", "Tax", "Total", "Refunded", "Cashier", "Offline", "Items"];
-  const lines = rows.map((x) => [x.invoice_number, x.local_time, x.customer_name, x.payment_method, x.payment_status,
+  const header = ["Invoice", "Date", "Branch", "Customer", "Payment", "Status", "Subtotal", "Discount", "Tax", "Total", "Refunded", "Cashier", "Offline", "Items"];
+  const lines = rows.map((x) => [x.invoice_number, x.local_time, x.branch, x.customer_name, x.payment_method, x.payment_status,
     x.subtotal, x.discount_amount, x.tax_amount, x.total_amount, x.refunded, x.cashier, x.offline ? "yes" : "", x.items].map(esc).join(","));
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="sales_${r.from}_to_${r.to}.csv"`);
