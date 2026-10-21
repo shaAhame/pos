@@ -85,6 +85,8 @@ The till keeps selling. Sales are saved on that device and uploaded automaticall
 ## Troubleshooting
 | What you see | What to do |
 |---|---|
+| `Port 5000 is already used` (common on Mac: AirPlay Receiver) | Put `PORT=5050` in `server/.env` and open http://localhost:5050 instead. |
+| `Database connection error: Invalid URL` | Your database password has a symbol such as `#`, `@`, `/` or `?`. Write it percent-encoded in DATABASE_URL (`#` → `%23`, `@` → `%40`, `/` → `%2F`, `?` → `%3F`), or reset it in Supabase to one with only letters and numbers. |
 | `Missing settings in server/.env` | The file isn't named exactly `.env`, or isn't in the `server` folder. |
 | `JWTPRIVATEKEY ... must be a long random value` | Generate one as in step 3. |
 | `password authentication failed` | Wrong password in DATABASE_URL, or the `[ ]` brackets are still there. Reset it in Supabase → Project Settings → Database. |
