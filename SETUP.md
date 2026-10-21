@@ -54,6 +54,13 @@ Other computers or tablets on the same Wi-Fi can use the POS through the main ti
 
 Give the main till a fixed IP address in your router settings so the address doesn't change.
 
+## Several branches in different places
+Tills in the same shop can share the main till (above). Branches in **different towns** can't reach a computer inside
+another shop, so for several branches run the POS on a small **online server** instead, and every branch opens its web
+address in Chrome. Any host that runs a Docker app works (for example Render or Railway): use the included `Dockerfile`,
+set the same values as in `server/.env` in the host's settings (plus `TRUST_PROXY=1`), and use an `https://` address.
+Then add your branches on the **Branches** page. Each branch keeps selling offline if its own internet drops.
+
 ## Start automatically when the computer turns on (Windows)
 Press `Win + R`, type `shell:startup`, press Enter, and put a **shortcut** to `start-pos.bat` in that folder.
 
@@ -80,7 +87,8 @@ The till keeps selling. Sales are saved on that device and uploaded automaticall
 ## Updating to a new version
 1. Close the POS window.
 2. Replace the folder's contents with the new version, but **keep your `server/.env`**.
-3. Delete the `client/dist` folder, then start the POS again. Database changes are applied automatically.
+3. Start the POS again. The screens are rebuilt and database changes are applied automatically.
+   If the new version says it needs new packages, run `npm run setup` once first.
 
 ## Troubleshooting
 | What you see | What to do |

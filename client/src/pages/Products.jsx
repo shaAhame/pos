@@ -10,7 +10,9 @@ import Modal from "../components/Modal";
 import { Empty, Input, Loading, Pager } from "../components/ui";
 
 export default function Products() {
-  const { settings } = useSession();
+  const { settings, can, multiBranch, location } = useSession();
+  const owner = can("owner");
+  const showByBranch = multiBranch && owner && !location;
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("active");
   const [lowStock, setLowStock] = useState(false);
@@ -22,7 +24,7 @@ export default function Products() {
   const [history, setHistory] = useState(null);
   const dq = useDebounced(q, 300);
   const [sortBy, order] = sort.split(":");
-  const list = useApi("/products", { filter: dq || undefined, status, lowStock: lowStock || undefined, category: category || undefined, sortBy, order, page, limit: 25 });
+  const list = useApi("/products", { filter: dq || undefined, status, lowStock: lowStock || undefined, category: category || undefined, sortBy, order, page, limit: 25, withStock: showByBranch || undefined });
   const cats = useApi("/products/categories");
   useEffect(() => { setPage(1); }, [dq, status, lowStock, category, sort]);
   const reload = () => { list.reload(); cats.reload(); };
@@ -30,8 +32,8 @@ export default function Products() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Products</h1><p>Prices, barcodes and stock. Stock changes are recorded with who, when and why.</p></div>
-        <button className="btn primary" onClick={() => setEdit({})}>Add product</button>
+        <div><h1>Products</h1><p>{multiBranch ? (location ? `Stock shown for ${location.name}. ` : "Stock shown for all branches together. ") : ""}Every stock change is recorded with who, when and why.</p></div>
+        {owner && <button className="btn primary" onClick={() => setEdit({})}>Add product</button>}
       </div>
       <div className="toolbar">
         <div className="field"><label htmlFor="pq">Search</label><input id="pq" type="search" placeholder="Name, barcode or category" value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -60,7 +62,7 @@ export default function Products() {
           <>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>Product</th><th>Category</th><th>Barcode</th><th className="num">Cost</th><th className="num">Price ({settings.currency})</th><th className="num">In stock</th><th></th></tr></thead>
+                <thead><tr><th>Product</th><th>Category</th><th>Barcode</th><th className="num">Cost</th><th className="num">Price ({settings.currency})</th><th className="num">{multiBranch ? (location ? `In stock (${location.name})` : "In stock (all)") : "In stock"}</th><th></th></tr></thead>
                 <tbody>
                   {list.data.products.map((p) => (
                     <tr key={p._id} className={p.active ? "" : "voided"}>
@@ -70,12 +72,17 @@ export default function Products() {
                       <td className="num muted">{p.costPrice != null ? fmt(p.costPrice) : ""}</td>
                       <td className="num"><strong>{fmt(p.price)}</strong></td>
                       <td className="num">
-                        {p.quantity <= 0 ? <span className="badge red">0</span> : p.quantity <= p.lowStockThreshold ? <span className="badge saffron">{p.quantity}</span> : p.quantity}
+                        {p.quantity <= 0 ? <span className="badge red">0</span> : p.quantity <= p.lowStockThreshold && !showByBranch ? <span className="badge saffron">{p.quantity}</span> : p.quantity}
+                        {showByBranch && p.stockByLocation && (
+                          <div className="small muted" style={{ whiteSpace: "normal" }}>
+                            {p.stockByLocation.map((b) => <span key={b.locationId} style={{ display: "inline-block", marginLeft: 6 }} className={b.quantity <= p.lowStockThreshold && b.type === "store" ? "danger-text" : ""}>{b.name} {b.quantity}</span>)}
+                          </div>
+                        )}
                       </td>
                       <td className="actions-cell">
                         <button className="btn small" onClick={() => setStock(p)}>Stock</button>{" "}
                         <button className="btn small" onClick={() => setHistory(p)}>History</button>{" "}
-                        <button className="btn small" onClick={() => setEdit(p)}>Edit</button>
+                        {owner && <button className="btn small" onClick={() => setEdit(p)}>Edit</button>}
                       </td>
                     </tr>
                   ))}
@@ -95,6 +102,8 @@ export default function Products() {
 
 function ProductForm({ product, categories, onClose, onSaved }) {
   const isNew = !product._id;
+  const { activeLocations, locationId, multiBranch } = useSession();
+  const [openingAt, setOpeningAt] = useState(locationId || activeLocations[0]?._id || "");
   const f = useForm({
     name: product.name || "", category: product.category || "", price: product.price ?? "", costPrice: product.costPrice ?? "",
     barcode: product.barcode || "", description: product.description || "", lowStockThreshold: product.lowStockThreshold ?? 5,
@@ -106,6 +115,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     setBusy(true);
     const body = clean(f.values, ["price", "costPrice", "lowStockThreshold", "quantity"]);
     if (!isNew) delete body.quantity; else if (body.quantity === null) body.quantity = 0;
+    if (isNew && multiBranch && body.quantity > 0) body.locationId = openingAt;
     try {
       if (isNew) await api.post("/products", body); else await api.put(`/products/${product._id}`, body);
       toast.success(isNew ? "Product added" : "Product saved");
@@ -133,10 +143,18 @@ function ProductForm({ product, categories, onClose, onSaved }) {
           <Input label="Selling price" form={f} name="price" type="number" min="0" step="0.01" required />
           <Input label="Cost price" form={f} name="costPrice" type="number" min="0" step="0.01" hint="What you pay. Used for profit reports." />
           {isNew && <Input label="Opening stock" form={f} name="quantity" type="number" min="0" step="1" hint="How many you have now" />}
+          {isNew && multiBranch && (
+            <div className="field"><label htmlFor="oat">Opening stock is at</label>
+              <select id="oat" value={openingAt} onChange={(e) => setOpeningAt(e.target.value)}>
+                {activeLocations.map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}
+              </select>
+              <span className="hint">Other branches start at 0. Send stock to them with a transfer.</span>
+            </div>
+          )}
           <Input label="Warn when stock reaches" form={f} name="lowStockThreshold" type="number" min="0" step="1" />
           <div className="field span-all"><label htmlFor="desc">Description (optional)</label><textarea id="desc" value={f.values.description} onChange={(e) => f.set("description", e.target.value)} /></div>
         </div>
-        {!isNew && <p className="muted small">To change the stock count, use the Stock button. Every change is kept in the product's history.</p>}
+        {!isNew && <p className="muted small">Price changes apply to every branch. To change a stock count, use the Stock button.</p>}
         <div className="row between">
           {!isNew ? <button type="button" className={`btn ${product.active ? "danger" : ""}`} onClick={toggleArchive}>{product.active ? "Archive product" : "Put back on sale"}</button> : <span />}
           <div className="row"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{isNew ? "Add product" : "Save product"}</button></div>
@@ -147,17 +165,22 @@ function ProductForm({ product, categories, onClose, onSaved }) {
 }
 
 function StockForm({ product, onClose, onSaved }) {
+  const { user, activeLocations, locationId, multiBranch } = useSession();
   const [type, setType] = useState("receive");
+  const pickBranch = multiBranch && user.role === "owner";
+  const [branch, setBranch] = useState(locationId || activeLocations[0]?._id || "");
+  const branchStock = useApi(pickBranch ? `/products` : null, { locationId: branch, filter: product.barcode || product.name, limit: 50 });
+  const current = pickBranch ? (branchStock.data?.products.find((x) => x._id === product._id)?.quantity ?? null) : product.quantity;
   const suppliers = useApi("/suppliers", { limit: 500 });
   const f = useForm({ quantity: "", supplierId: "", unitCost: "", note: "" });
   const [busy, setBusy] = useState(false);
   const q = Number(f.values.quantity);
-  const after = type === "receive" ? product.quantity + (q || 0) : (f.values.quantity === "" ? product.quantity : q);
+  const after = current == null ? "" : type === "receive" ? current + (q || 0) : (f.values.quantity === "" ? current : q);
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post(`/products/${product._id}/stock`, { type, ...clean(f.values, ["quantity", "unitCost"]) });
+      await api.post(`/products/${product._id}/stock`, { type, ...clean(f.values, ["quantity", "unitCost"]), ...(pickBranch ? { locationId: branch } : {}) });
       toast.success(`Stock updated: ${product.name} now ${after}`);
       onSaved();
     } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); }
@@ -169,7 +192,14 @@ function StockForm({ product, onClose, onSaved }) {
           <button type="button" aria-pressed={type === "receive"} onClick={() => setType("receive")}>Received delivery</button>
           <button type="button" aria-pressed={type === "adjust"} onClick={() => setType("adjust")}>Stock count</button>
         </div>
-        <p className="muted">In stock now: <strong>{product.quantity}</strong>. After this: <strong>{after}</strong>.</p>
+        {pickBranch && (
+          <div className="field"><label htmlFor="sb">Branch</label>
+            <select id="sb" value={branch} onChange={(e) => setBranch(e.target.value)}>
+              {activeLocations.map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}
+            </select>
+          </div>
+        )}
+        <p className="muted">In stock now: <strong>{current ?? "…"}</strong>. After this: <strong>{after}</strong>.</p>
         {type === "receive" ? (
           <div className="form-grid">
             <Input label="Units received" form={f} name="quantity" type="number" min="1" step="1" required />
@@ -193,26 +223,32 @@ function StockForm({ product, onClose, onSaved }) {
   );
 }
 
-const REASONS = { initial: "Opening stock", sale: "Sold", void: "Sale voided", return: "Returned by customer", receive: "Delivery received", adjust: "Stock count", offline_shortfall: "Sold offline beyond stock" };
+const REASONS = {
+  initial: "Opening stock", sale: "Sold", void: "Sale voided", return: "Returned by customer", receive: "Delivery received",
+  adjust: "Stock count", offline_shortfall: "Sold offline beyond stock",
+  transfer_out: "Sent to another branch", transfer_in: "Received from another branch",
+  transfer_short: "Missing from a transfer", transfer_cancel: "Transfer cancelled",
+};
 
 function StockHistory({ product, onClose }) {
-  const { settings } = useSession();
+  const { settings, multiBranch } = useSession();
   const { data, loading } = useApi(`/products/${product._id}/movements`);
   return (
     <Modal title={`History: ${product.name}`} onClose={onClose} wide>
       {loading ? <Loading /> : !data?.length ? <Empty title="No stock changes yet" /> : (
         <div className="table-wrap" style={{ maxHeight: "60vh", overflowY: "auto" }}>
           <table className="data">
-            <thead><tr><th>When</th><th>What</th><th className="num">Change</th><th className="num">Stock after</th><th>By</th><th>Details</th></tr></thead>
+            <thead><tr><th>When</th>{multiBranch && <th>Branch</th>}<th>What</th><th className="num">Change</th><th className="num">Stock after</th><th>By</th><th>Details</th></tr></thead>
             <tbody>
               {data.map((m) => (
                 <tr key={m._id}>
                   <td>{dateTime(m.createdAt, settings.timezone)}</td>
-                  <td>{m.reason === "offline_shortfall" ? <span className="badge saffron">{REASONS[m.reason]}</span> : REASONS[m.reason] || m.reason}</td>
+                  {multiBranch && <td>{m.locationName}</td>}
+                  <td>{["offline_shortfall", "transfer_short"].includes(m.reason) ? <span className="badge saffron">{REASONS[m.reason]}</span> : REASONS[m.reason] || m.reason}</td>
                   <td className="num">{m.change > 0 ? `+${m.change}` : m.change}</td>
                   <td className="num">{m.quantityAfter}</td>
                   <td>{m.userName}</td>
-                  <td className="small">{[m.invoiceNumber, m.returnNumber, m.supplierName, m.unitCost != null ? `cost ${fmt(m.unitCost)}` : null, m.note].filter(Boolean).join(", ")}</td>
+                  <td className="small">{[m.invoiceNumber, m.returnNumber, m.transferNumber, m.supplierName, m.unitCost != null ? `cost ${fmt(m.unitCost)}` : null, m.note].filter(Boolean).join(", ")}</td>
                 </tr>
               ))}
             </tbody>

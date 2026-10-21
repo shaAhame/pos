@@ -12,6 +12,8 @@ import Users from "./pages/Users";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Account from "./pages/Account";
+import Branches from "./pages/Branches";
+import Transfers from "./pages/Transfers";
 
 function Guard({ role, children }) {
   const { can } = useSession();
@@ -46,6 +48,8 @@ function Routed() {
         <Route path="/employees" element={<Guard role="owner"><Employees /></Guard>} />
         <Route path="/users" element={<Guard role="owner"><Users /></Guard>} />
         <Route path="/settings" element={<Guard role="owner"><Settings /></Guard>} />
+        <Route path="/branches" element={<Guard role="owner"><Branches /></Guard>} />
+        <Route path="/transfers" element={<Guard role="manager"><Transfers /></Guard>} />
         <Route path="/account" element={<Account />} />
         <Route path="*" element={<Navigate to="/till" replace />} />
       </Route>

@@ -7,9 +7,12 @@
 | Add and edit customers | ✓ | ✓ | ✓ |
 | See own sales | ✓ | ✓ | ✓ |
 | See all sales, void sales, return items | | ✓ | ✓ |
-| Products, stock deliveries, stock counts, suppliers | | ✓ | ✓ |
+| Stock deliveries and stock counts (own branch), suppliers | | ✓ | ✓ |
 | Reports, everyone's shifts | | ✓ | ✓ |
 | Discount above the cashier limit | | ✓ | ✓ |
+| Add products, change prices | | | ✓ |
+| Branches, stock transfers between branches | | | ✓ |
+| Confirm a transfer arrived at your branch | | ✓ | ✓ |
 | Staff logins, employees and salaries, shop settings | | | ✓ |
 
 ## Start of the day (cashier)
@@ -48,3 +51,20 @@ Pick a period to see net sales, profit (for products with a cost price), cash an
 ## If the internet goes down
 Keep selling. The top bar shows **Offline**, and sales are saved on that till and uploaded automatically later.
 Receipts printed while offline say "Receipt (offline)"; the invoice number is given when it uploads.
+
+## Branches (owner)
+- **Branches** page: add each shop, and your main store or warehouse. A warehouse holds stock but has no till.
+- Products and prices are shared by every branch. Stock is counted separately in each one.
+- Each staff login belongs to one branch, and staff only see their own branch's stock, sales and shifts.
+- The **branch menu** at the top switches what you're looking at: one branch, or **All branches** together.
+  To sell yourself, pick the shop first, then open a shift.
+- **Reports** with *All branches* shows a **Branches compared** table: sales, refunds, net sales and stock value per branch.
+
+## Moving stock between branches
+1. **Transfers** → **New transfer** (owner only). Choose **From** and **To**, add products and quantities, then **Send transfer**.
+   The stock leaves the sending branch straight away and shows as *On the way*.
+2. When the goods arrive, the receiving branch's manager opens the transfer, counts what actually came, changes any
+   number that's short, and presses **Confirm received**. Only what arrived is added to their stock; anything missing is recorded.
+3. If the goods never leave, the owner can **Cancel transfer** while it's still on the way, and everything goes back.
+
+Every step shows in each product's **History**, with the transfer number.

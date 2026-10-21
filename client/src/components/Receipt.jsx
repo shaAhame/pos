@@ -6,12 +6,17 @@ import { dateTime, fullName } from "../lib/format";
 export function Receipt({ sale, settings }) {
   const cur = settings.currency || "Rs.";
   const voided = sale.paymentStatus === "Voided";
+  // A branch's own address/phone wins over the business-wide ones.
+  const branch = sale.location;
+  const address = branch?.address || settings.address;
+  const phone = branch?.phone || settings.phone;
   return (
     <div className="receipt">
       <div className="c">
         <div className="shopname">{settings.shopName}</div>
-        {settings.address && <div>{settings.address}</div>}
-        {settings.phone && <div>Tel: {settings.phone}</div>}
+        {branch?.name && branch.name !== settings.shopName && branch.name !== "Main store" && <div>{branch.name}</div>}
+        {address && <div>{address}</div>}
+        {phone && <div>Tel: {phone}</div>}
       </div>
       <hr />
       <table><tbody>

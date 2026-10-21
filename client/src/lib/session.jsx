@@ -1,7 +1,7 @@
 // App-wide session: logged-in user, shop settings, current shift, connection + offline sync.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
-import { api, getToken, setToken, onUnauthorized, isConnectionError } from "./api";
+import { api, getToken, setToken, onUnauthorized, isConnectionError, getLocationId, setLocationId } from "./api";
 import { load, save } from "./storage";
 import * as offline from "./offline";
 
@@ -19,6 +19,8 @@ export function SessionProvider({ children }) {
   const [online, setOnline] = useState(true);
   const [queueCount, setQueueCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
+  const [locations, setLocations] = useState(() => load("pos.locations", []));
+  const [ownerLocationId, setOwnerLocationIdState] = useState(getLocationId);
   const userRef = useRef(user);
   userRef.current = user;
 
@@ -32,6 +34,8 @@ export function SessionProvider({ children }) {
 
   const logout = useCallback((message) => {
     setToken(null);
+    setLocationId(null);
+    setOwnerLocationIdState(null);
     setUser(null);
     save("pos.user", null);
     setShift(null);
@@ -49,6 +53,18 @@ export function SessionProvider({ children }) {
     return data;
   }, []);
 
+  const refreshLocations = useCallback(async () => {
+    const { data } = await api.get("/locations");
+    setLocations(data);
+    save("pos.locations", data);
+    return data;
+  }, []);
+
+  const chooseLocation = useCallback((id) => {
+    setLocationId(id || null);
+    setOwnerLocationIdState(id || null);
+  }, []);
+
   const refreshShift = useCallback(async () => {
     const { data } = await api.get("/shifts/current");
     setShift(data);
@@ -64,7 +80,7 @@ export function SessionProvider({ children }) {
         const { data } = await api.get("/auth/me");
         if (cancelled) return;
         setUser(data); save("pos.user", data);
-        await Promise.all([refreshSettings(), refreshShift()]).catch(() => {});
+        await Promise.all([refreshSettings(), refreshShift(), refreshLocations()]).catch(() => {});
         setOnline(true);
       } catch (err) {
         if (isConnectionError(err)) setOnline(false); // keep the cached user; work offline
@@ -79,8 +95,9 @@ export function SessionProvider({ children }) {
     setToken(token);
     setUser(u); save("pos.user", u);
     setOnline(true);
-    await Promise.all([refreshSettings(), refreshShift()]).catch(() => {});
-  }, [refreshSettings, refreshShift]);
+    if (u.role !== "owner") { setLocationId(null); setOwnerLocationIdState(null); }
+    await Promise.all([refreshSettings(), refreshShift(), refreshLocations()]).catch(() => {});
+  }, [refreshSettings, refreshShift, refreshLocations]);
 
   // Background sync: every 20 s, when the browser comes back online, and on demand.
   const sync = useCallback(async ({ quiet = true } = {}) => {
@@ -118,10 +135,24 @@ export function SessionProvider({ children }) {
 
   const can = useCallback((role) => !!user && RANK[user.role] >= RANK[role], [user]);
 
+  // The branch this screen is about: staff -> their own; owner -> their choice (null = all branches).
+  const activeLocations = useMemo(() => locations.filter((l) => l.active), [locations]);
+  const multiBranch = activeLocations.length > 1;
+  const locationId = !user ? null : user.role === "owner"
+    ? (activeLocations.some((l) => l._id === ownerLocationId) ? ownerLocationId : (multiBranch ? null : activeLocations[0]?._id || null))
+    : user.locationId;
+  const location = locations.find((l) => l._id === locationId) || null;
+  useEffect(() => {
+    // Forget a choice that points at a branch that no longer exists.
+    if (user?.role === "owner" && ownerLocationId && locations.length && !activeLocations.some((l) => l._id === ownerLocationId)) chooseLocation(null);
+  }, [user, ownerLocationId, locations.length, activeLocations, chooseLocation]);
+
   const value = useMemo(() => ({
     user, settings, shift, ready, online, queueCount, failedCount,
-    signIn, logout, can, setShift, setOnline, refreshShift, refreshSettings, sync,
-  }), [user, settings, shift, ready, online, queueCount, failedCount, signIn, logout, can, setShift, refreshShift, refreshSettings, sync]);
+    locations, activeLocations, multiBranch, location, locationId,
+    signIn, logout, can, setShift, setOnline, refreshShift, refreshSettings, refreshLocations, chooseLocation, sync,
+  }), [user, settings, shift, ready, online, queueCount, failedCount, locations, activeLocations, multiBranch, location, locationId,
+    signIn, logout, can, setShift, refreshShift, refreshSettings, refreshLocations, chooseLocation, sync]);
 
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;
 }

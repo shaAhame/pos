@@ -16,7 +16,7 @@ const ROLES = [
 const ROLE_NAME = { cashier: "Cashier", manager: "Manager", owner: "Owner" };
 
 export default function Users() {
-  const { settings, user: me } = useSession();
+  const { settings, user: me, multiBranch } = useSession();
   const { data, loading, reload } = useApi("/users");
   const [edit, setEdit] = useState(null);
   return (
@@ -29,13 +29,14 @@ export default function Users() {
         {loading && !data ? <Loading /> : !data?.length ? <Empty title="No staff yet" /> : (
           <div className="table-wrap">
             <table className="data">
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Added</th><th></th></tr></thead>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th>{multiBranch && <th>Branch</th>}<th>Status</th><th>Added</th><th></th></tr></thead>
               <tbody>
                 {data.map((u) => (
                   <tr key={u._id} className={u.active ? "" : "voided"}>
                     <td><strong>{u.firstName} {u.lastName}</strong>{u._id === me._id && <span className="muted"> (you)</span>}</td>
                     <td>{u.email}</td>
                     <td>{ROLE_NAME[u.role]}</td>
+                    {multiBranch && <td>{u.role === "owner" ? <span className="muted">All branches</span> : u.location?.name || <span className="danger-text">Not set</span>}</td>}
                     <td>{u.active ? <span className="badge green">Active</span> : <span className="badge">Disabled</span>}</td>
                     <td>{dateOnly(u.createdAt, settings.timezone)}</td>
                     <td className="actions-cell"><button className="btn small" onClick={() => setEdit(u)}>Edit</button></td>
@@ -53,13 +54,15 @@ export default function Users() {
 
 function UserForm({ u, onClose, onSaved }) {
   const isNew = !u._id;
-  const f = useForm({ firstName: u.firstName || "", lastName: u.lastName || "", email: u.email || "", role: u.role || "cashier", password: "" });
+  const { activeLocations, multiBranch } = useSession();
+  const f = useForm({ firstName: u.firstName || "", lastName: u.lastName || "", email: u.email || "", role: u.role || "cashier", password: "", locationId: u.location?._id || "" });
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     const body = { ...f.values };
     if (!isNew && !body.password) delete body.password;
+    if (!multiBranch || body.role === "owner") delete body.locationId;
     try {
       if (isNew) await api.post("/users", body); else await api.put(`/users/${u._id}`, body);
       toast.success(isNew ? "Staff login added. Give them their email and password." : "Saved");
@@ -81,6 +84,10 @@ function UserForm({ u, onClose, onSaved }) {
           <Input label="Last name" form={f} name="lastName" required />
           <Input label="Email (used to log in)" form={f} name="email" type="email" required className="span-all" />
           <Select label="Role" form={f} name="role" options={ROLES} className="span-all" />
+          {multiBranch && f.values.role !== "owner" && (
+            <Select label="Works at" form={f} name="locationId" className="span-all" required
+              options={[{ value: "", label: "Choose a branch" }, ...activeLocations.map((l) => ({ value: l._id, label: l.name }))]} />
+          )}
           <Input label={isNew ? "Password" : "New password (leave blank to keep)"} form={f} name="password" type="password" autoComplete="new-password"
             required={isNew} className="span-all" hint="At least 8 characters, with upper and lower case letters and a number." />
         </div>

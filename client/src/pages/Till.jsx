@@ -15,8 +15,12 @@ const CATALOG_KEY = "pos.catalog";
 const CART_KEY = "pos.cart";
 
 export default function Till() {
-  const { user, settings, shift, online, setOnline, refreshShift, can } = useSession();
-  const [catalog, setCatalog] = useState(() => load(CATALOG_KEY, []));
+  const { user, settings, shift, online, setOnline, refreshShift, can, multiBranch, location, locationId } = useSession();
+  // The till sells from the branch of the open shift (or, before a shift, the chosen branch).
+  const tillLocationId = shift?.location?._id || locationId || null;
+  const tillLocation = shift?.location || location;
+  const catalogKey = `${CATALOG_KEY}.${tillLocationId || "default"}`;
+  const [catalog, setCatalog] = useState(() => load(catalogKey, []));
   const [catalogState, setCatalogState] = useState("loading");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -35,16 +39,16 @@ export default function Till() {
 
   const loadCatalog = useCallback(async () => {
     try {
-      const { data } = await api.get("/products", { params: { limit: 5000, status: "active" } });
+      const { data } = await api.get("/products", { params: { limit: 5000, status: "active", locationId: tillLocationId || undefined } });
       setCatalog(data.products);
-      save(CATALOG_KEY, data.products);
+      save(catalogKey, data.products);
       setCatalogState("ok");
       setOnline(true);
     } catch (err) {
       setCatalogState(isConnectionError(err) ? "offline" : "error");
       if (isConnectionError(err)) setOnline(false);
     }
-  }, [setOnline]);
+  }, [setOnline, tillLocationId, catalogKey]);
   useEffect(() => { loadCatalog(); }, [loadCatalog]);
   useEffect(() => { searchRef.current?.focus(); }, []);
 
@@ -138,7 +142,7 @@ export default function Till() {
         };
         const receipt = {
           pending: true, invoiceNumber: `OFF-${clientRef.slice(0, 8).toUpperCase()}`, date: createdAt,
-          cashier: user, customerName: customer?.name || "Walk-in Customer", paymentMethod,
+          cashier: user, customerName: customer?.name || "Walk-in Customer", paymentMethod, location: tillLocation,
           items: cart.map((l) => ({ ...l, total: round2(l.price * l.quantity) })),
           discount: payload.discount, taxRate: payload.taxRate, ...totals,
           amountTendered: payload.amountTendered,
@@ -155,7 +159,7 @@ export default function Till() {
           const l = cart.find((x) => x.product === p._id);
           return l ? { ...p, quantity: Math.max(0, p.quantity - l.quantity) } : p;
         });
-        setCatalog(next); save(CATALOG_KEY, next);
+        setCatalog(next); save(catalogKey, next);
         setOnline(false);
         setPaying(false);
         setDone({ sale: receipt });
@@ -170,10 +174,19 @@ export default function Till() {
     }
   };
 
+  if (!shift && online && user.role === "owner" && multiBranch && (!location || location.type !== "store")) {
+    return (
+      <>
+        <div className="page-head"><div><h1>Till</h1><p>Choose which shop you're selling in.</p></div></div>
+        <div className="notice">Pick a shop in the branch menu at the top of the screen, then open your shift.</div>
+      </>
+    );
+  }
+
   if (!shift && online) {
     return (
       <>
-        <div className="page-head"><div><h1>Till</h1><p>Open your shift to start selling.</p></div></div>
+        <div className="page-head"><div><h1>Till</h1><p>Open your shift to start selling{multiBranch && tillLocation ? ` at ${tillLocation.name}` : ""}.</p></div></div>
         <div className="panel pad" style={{ maxWidth: 460 }}>
           <OpenShiftForm onOpened={() => searchRef.current?.focus()} />
         </div>

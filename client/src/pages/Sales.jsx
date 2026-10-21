@@ -19,7 +19,8 @@ const statusBadge = (s) => {
 };
 
 export default function Sales() {
-  const { settings, can, user } = useSession();
+  const { settings, can, user, multiBranch, location } = useSession();
+  const branchCol = multiBranch && user.role === "owner" && !location;
   const tz = settings.timezone;
   const [params, setParams] = useSearchParams();
   const { id } = useParams();
@@ -87,7 +88,7 @@ export default function Sales() {
           <>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Items</th><th>Payment</th><th>Status</th>{can("manager") && <th>Cashier</th>}<th className="num">Total</th></tr></thead>
+                <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Items</th><th>Payment</th><th>Status</th>{branchCol && <th>Branch</th>}{can("manager") && <th>Cashier</th>}<th className="num">Total</th></tr></thead>
                 <tbody>
                   {list.data.sales.map((s) => (
                     <tr key={s._id} className={`clickable${s.paymentStatus === "Voided" ? " voided" : ""}`} tabIndex={0}
@@ -98,6 +99,7 @@ export default function Sales() {
                       <td className="small">{s.items.slice(0, 3).map((i) => `${i.name} ×${i.quantity}`).join(", ")}{s.items.length > 3 ? ` +${s.items.length - 3} more` : ""}</td>
                       <td>{s.paymentMethod}</td>
                       <td>{statusBadge(s)}</td>
+                      {branchCol && <td>{s.location?.name}</td>}
                       {can("manager") && <td>{fullName(s.cashier)}</td>}
                       <td className="num"><strong>{fmt(s.totalAmount)}</strong></td>
                     </tr>

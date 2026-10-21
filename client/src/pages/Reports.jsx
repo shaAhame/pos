@@ -69,7 +69,8 @@ function DailyChart({ rows, currency }) {
 }
 
 export default function Reports() {
-  const { settings } = useSession();
+  const { settings, user, multiBranch, location } = useSession();
+  const compare = multiBranch && user.role === "owner" && !location;
   const cur = settings.currency;
   const P = useMemo(() => presets(settings.timezone), [settings.timezone]);
   const [preset, setPreset] = useState("today");
@@ -80,6 +81,7 @@ export default function Reports() {
   const daily = useApi(range.from !== range.to ? "/reports/daily" : null, params);
   const top = useApi("/reports/top-products", { ...params, limit: 10 });
   const low = useApi("/reports/low-stock");
+  const byLoc = useApi(compare ? "/reports/by-location" : null, params);
   const [asTable, setAsTable] = useState(false);
   const s = summary.data;
 
@@ -91,7 +93,7 @@ export default function Reports() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Reports</h1><p>Sales, profit and stock for the period you pick.</p></div>
+        <div><h1>Reports</h1><p>{multiBranch ? (location ? `${location.name} only. ` : user.role === "owner" ? "All branches together. Pick a branch at the top to see one. " : "") : ""}Sales, profit and stock for the period you pick.</p></div>
         <button className="btn" onClick={exportCsv}>Download sales (CSV)</button>
       </div>
       <div className="toolbar">
@@ -120,6 +122,24 @@ export default function Reports() {
             <div className="kpi"><div className="k">Returns and voids</div><div className="v">{s.returnCount} / {s.voidCount}</div><div className="s">voided {fmt(s.voidTotal)}</div></div>
             <div className="kpi"><div className="k">Discounts / tax ({cur})</div><div className="v" style={{ fontSize: "var(--step-1)" }}>{fmt(s.discounts)} / {fmt(s.tax)}</div></div>
           </div>
+
+          {compare && byLoc.data && (
+            <div className="panel" style={{ marginBottom: 16 }}>
+              <div className="modal-head"><h3>Branches compared</h3></div>
+              <div className="table-wrap">
+                <table className="data">
+                  <thead><tr><th>Branch</th><th className="num">Sales</th><th className="num">Gross ({cur})</th><th className="num">Refunds</th><th className="num">Net ({cur})</th><th className="num">Stock value at cost</th></tr></thead>
+                  <tbody>{byLoc.data.map((b) => (
+                    <tr key={b._id}>
+                      <td><strong>{b.name}</strong>{b.type === "warehouse" && <span className="muted"> (warehouse)</span>}</td>
+                      <td className="num">{b.salesCount}</td><td className="num">{fmt(b.grossSales)}</td><td className="num">{fmt(b.refunds)}</td>
+                      <td className="num"><strong>{fmt(b.netSales)}</strong></td><td className="num muted">{fmt(b.stockValueAtCost)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {range.from !== range.to && (
             <div className="panel pad" style={{ marginBottom: 16 }}>
@@ -152,8 +172,8 @@ export default function Reports() {
               <div className="modal-head"><h3>Running low</h3><Link to="/products" className="small">Products</Link></div>
               {!low.data ? <Loading /> : !low.data.length ? <Empty title="Nothing is running low" /> : (
                 <table className="data">
-                  <thead><tr><th>Product</th><th className="num">Left</th><th className="num">Warn at</th></tr></thead>
-                  <tbody>{low.data.slice(0, 15).map((p) => <tr key={p._id}><td>{p.name}</td><td className="num">{p.quantity <= 0 ? <span className="badge red">0</span> : <span className="badge saffron">{p.quantity}</span>}</td><td className="num muted">{p.lowStockThreshold}</td></tr>)}</tbody>
+                  <thead><tr><th>Product</th>{multiBranch && <th>Branch</th>}<th className="num">Left</th><th className="num">Warn at</th></tr></thead>
+                  <tbody>{low.data.slice(0, 15).map((p) => <tr key={p._id + p.locationId}><td>{p.name}</td>{multiBranch && <td>{p.locationName}</td>}<td className="num">{p.quantity <= 0 ? <span className="badge red">0</span> : <span className="badge saffron">{p.quantity}</span>}</td><td className="num muted">{p.lowStockThreshold}</td></tr>)}</tbody>
                 </table>
               )}
             </div>

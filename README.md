@@ -23,7 +23,7 @@ npm run dev:client                  # app on :3000, proxies /api to :5000
 ## Tests
 ```
 cd client && npm test                                                    # money maths, offline queue
-cd server && TEST_DATABASE_URL=postgresql://.../pos_test npm test        # 42 API tests
+cd server && TEST_DATABASE_URL=postgresql://.../pos_test npm test        # 56 API tests
 ```
 The server tests **wipe** the test database at the start of each file and refuse to run unless the URL contains `test`.
 CI runs both on every push (`.github/workflows/test.yml`).
@@ -38,6 +38,11 @@ CI runs both on every push (`.github/workflows/test.yml`).
 - **Blind cash-up.** Cashiers don't see the expected drawer amount until they've entered their count.
 - **Roles are checked on every request** against the database, so disabling a user or changing a role takes effect immediately.
 - **RLS is enabled with no policies** on every table, so Supabase's public REST API can't read anything. Only the server, connecting as the database owner, has access.
+- **Branches.** `locations` (shops and warehouses) with stock in `product_stock (product_id, location_id)`. Products and
+  prices are global. Staff belong to one location; the owner sends `X-Location-Id` to choose one (none = all branches).
+  Scoping is enforced server-side in every route, not just hidden in the UI.
+- **Transfers** take stock out of the source immediately (status `in_transit`), add only what the destination confirms
+  (`transfer_in`), and record shortages (`transfer_short`). The owner can cancel while in transit (`transfer_cancel`).
 - **Migrations** are numbered SQL files in `server/migrations`, applied once each at start-up under an advisory lock.
 
 ## Deploying elsewhere

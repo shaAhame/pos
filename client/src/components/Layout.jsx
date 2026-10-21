@@ -10,17 +10,19 @@ const NAV = [
   { to: "/customers", label: "Customers", role: "cashier" },
   { group: "Stock", role: "manager" },
   { to: "/products", label: "Products", role: "manager" },
+  { to: "/transfers", label: "Transfers", role: "manager" },
   { to: "/suppliers", label: "Suppliers", role: "manager" },
   { group: "Business", role: "manager" },
   { to: "/reports", label: "Reports", role: "manager" },
   { to: "/shifts", label: "All shifts", role: "manager" },
   { to: "/employees", label: "Employees", role: "owner" },
   { to: "/users", label: "Staff logins", role: "owner" },
+  { to: "/branches", label: "Branches", role: "owner" },
   { to: "/settings", label: "Shop settings", role: "owner" },
 ];
 
 export default function Layout() {
-  const { user, settings, can, online, queueCount, logout, shift, sync } = useSession();
+  const { user, settings, can, online, queueCount, logout, shift, sync, multiBranch, activeLocations, location, locationId, chooseLocation } = useSession();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const roleName = { owner: "Owner", manager: "Manager", cashier: "Cashier" }[user.role];
@@ -30,6 +32,15 @@ export default function Layout() {
       <header className="topbar">
         <button className="btn ghost small menu-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="sidebar">Menu</button>
         <span className="shop">{settings.shopName}</span>
+        {multiBranch && user.role === "owner" ? (
+          <>
+            <label htmlFor="branch-pick" className="visually-hidden">Branch</label>
+            <select id="branch-pick" className="branch-pick" value={locationId || ""} onChange={(e) => chooseLocation(e.target.value || null)}>
+              <option value="">All branches</option>
+              {activeLocations.map((l) => <option key={l._id} value={l._id}>{l.name}{l.type === "warehouse" ? " (warehouse)" : ""}</option>)}
+            </select>
+          </>
+        ) : multiBranch && location ? <span className="branch-name">{location.name}</span> : null}
         <span className="spacer" />
         {online && queueCount === 0 ? (
           <span className="status-pill" title="Connected"><span className="dot" />Online</span>
@@ -54,7 +65,8 @@ export default function Layout() {
         </nav>
       </aside>
       <main className="main">
-        <Outlet />
+        {/* Re-mount the page when the owner switches branch so everything reloads for that branch. */}
+        <Outlet key={locationId || "all"} />
       </main>
     </div>
   );

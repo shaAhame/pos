@@ -117,6 +117,9 @@ input[type=checkbox] { width: 18px; min-height: 18px; height: 18px; accent-color
 }
 .topbar .shop { font-weight: 700; font-size: var(--step-1); color: #fff; }
 .topbar .spacer { flex: 1; }
+.branch-pick { width: auto; min-height: 34px; padding: 4px 30px 4px 10px; background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); font-weight: 700; }
+.branch-pick option { color: var(--ink); background: #fff; }
+.branch-name { font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.1); }
 .topbar .btn.ghost { color: #E9EEEB; }
 .topbar .btn.ghost:hover { background: rgba(255,255,255,.08); }
 .status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: var(--step--1); padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.08); }

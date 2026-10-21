@@ -6,9 +6,15 @@ export const setToken = (t) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : 
 
 export const api = axios.create({ baseURL: "/api", timeout: 15000 });
 
+const LOC_KEY = "pos.locationId";
+export const getLocationId = () => { try { return localStorage.getItem(LOC_KEY) || null; } catch { return null; } };
+export const setLocationId = (id) => { try { id ? localStorage.setItem(LOC_KEY, id) : localStorage.removeItem(LOC_KEY); } catch { /* ignore */ } };
+
 api.interceptors.request.use((config) => {
   const t = getToken();
   if (t) config.headers.Authorization = `Bearer ${t}`;
+  const loc = getLocationId();
+  if (loc) config.headers["X-Location-Id"] = loc; // only the owner's choice is honoured by the server
   return config;
 });
 

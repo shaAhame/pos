@@ -144,6 +144,7 @@ export function CloseShiftModal({ shift, onClose, onClosed }) {
 }
 
 function ShiftTable({ data, loading, cur, tz, showUser, onOpen, page, onPage }) {
+  const { multiBranch } = useSession();
   if (loading && !data) return <div className="panel"><Loading /></div>;
   if (!data?.shifts?.length) return <div className="panel"><Empty title="No shifts yet" /></div>;
   return (
@@ -151,13 +152,14 @@ function ShiftTable({ data, loading, cur, tz, showUser, onOpen, page, onPage }) 
       <div className="table-wrap">
         <table className="data">
           <thead><tr>
-            {showUser && <th>Staff</th>}<th>Opened</th><th>Closed</th><th className="num">Opening cash</th>
+            {showUser && <th>Staff</th>}{multiBranch && <th>Branch</th>}<th>Opened</th><th>Closed</th><th className="num">Opening cash</th>
             <th className="num">Expected</th><th className="num">Counted</th><th className="num">Difference</th>
           </tr></thead>
           <tbody>
             {data.shifts.map((s) => (
               <tr key={s._id} className={onOpen ? "clickable" : ""} onClick={() => onOpen?.(s)}>
                 {showUser && <td>{s.user.name}</td>}
+                {multiBranch && <td>{s.location?.name}</td>}
                 <td>{dateTime(s.openedAt, tz)}</td>
                 <td>{s.closedAt ? dateTime(s.closedAt, tz) : <span className="badge green">Open</span>}</td>
                 <td className="num">{fmt(s.openingFloat)}</td>
@@ -215,7 +217,7 @@ function ShiftDetail({ shift, detail, onClose, onChanged }) {
       </div>}>
       {!d ? <Loading /> : (
         <div className="stack">
-          <p className="muted">Opened {dateTime(d.openedAt, settings.timezone)}{d.closedAt && `, closed ${dateTime(d.closedAt, settings.timezone)} by ${d.closedBy?.name}`}</p>
+          <p className="muted">{d.location?.name ? `${d.location.name}. ` : ""}Opened {dateTime(d.openedAt, settings.timezone)}{d.closedAt && `, closed ${dateTime(d.closedAt, settings.timezone)} by ${d.closedBy?.name}`}</p>
           <SummaryTable s={d.summary} shift={d} cur={settings.currency} />
           {d.closedAt && <p>Counted {money(d.countedCash, settings.currency)}. Difference {fmt(d.variance)}.</p>}
           {d.note && <p><strong>Note:</strong> {d.note}</p>}
