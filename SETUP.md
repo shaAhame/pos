@@ -40,7 +40,24 @@ The first start installs and builds everything (needs internet, a few minutes). 
 **http://localhost:5000**. Keep the black window open while the shop is open; closing it stops the POS.
 
 ## 5. First use
-1. Click **Set up the shop**: enter the shop name and create the **owner** account.
+### a) Set up the MacQuad platform (once)
+This POS is one system that runs many client businesses, grocery or electronics. MacQuad manages them all from
+the platform page.
+1. Open **http://localhost:5000/platform** and create the first **MacQuad admin** account. This only happens once.
+2. Click **Add business**: business name, type (Grocery, Electronics / mobile phones, or General), and the owner's
+   name, email and temporary password. Each business gets its own products, staff, branches, sales and settings,
+   and can never see another business's data.
+3. Open a business to switch its **features** on or off: serial/IMEI numbers, warranty, variants, repairs, supplier
+   claims, installments, advance orders, trade-ins, split payments, item discounts. The type sets sensible defaults;
+   change anything a client asks for.
+4. **Suspend** a business (e.g. unpaid subscription) to log its staff out at once; **Reactivate** to restore it.
+5. Give the owner their email and password. They log in at the normal address (**/login**).
+
+If you upgraded from version 2, your existing shop is already the first business, and every existing login still
+works. You only need to do step 1.
+
+### b) In each business (the owner)
+1. Log in at **/login** with the owner account the platform created.
 2. **Shop settings**: address, phone, receipt message, tax %, the maximum discount a cashier may give.
 3. **Staff logins**: add an account for each person (Cashier or Manager).
 4. **Suppliers** (optional), then **Products**: add products with price, cost price, barcode and opening stock.

@@ -120,6 +120,15 @@ export default function Reports() {
             <div className="kpi"><div className="k">Gross profit ({cur})</div><div className="v">{fmt(s.grossProfit)}</div><div className="s">{s.profitCoverage === "full" ? "all items have a cost price" : "only items with a cost price"}</div></div>
             <div className="kpi"><div className="k">Cash / card ({cur})</div><div className="v" style={{ fontSize: "var(--step-1)" }}>{fmt(s.cashSales)} / {fmt(s.cardSales)}</div><div className="s">{s.itemsSold} items sold</div></div>
             <div className="kpi"><div className="k">Returns and voids</div><div className="v">{s.returnCount} / {s.voidCount}</div><div className="s">voided {fmt(s.voidTotal)}</div></div>
+            {(s.bankSales > 0 || s.installmentsCollected > 0 || s.depositsTaken > 0 || s.tradeInValue > 0 || s.creditSales > 0) && (
+              <div className="kpi"><div className="k">Other money ({cur})</div>
+                <div className="s">Bank transfers {fmt(s.bankSales)}</div>
+                {s.creditSales > 0 && <div className="s">Sold on installments {fmt(s.creditSales)}</div>}
+                {s.installmentsCollected > 0 && <div className="s">Installments collected {fmt(s.installmentsCollected)}</div>}
+                {s.depositsTaken > 0 && <div className="s">Order deposits {fmt(s.depositsTaken)}</div>}
+                {s.tradeInValue > 0 && <div className="s">Trade-ins {fmt(s.tradeInValue)}</div>}
+              </div>
+            )}
             <div className="kpi"><div className="k">Discounts / tax ({cur})</div><div className="v" style={{ fontSize: "var(--step-1)" }}>{fmt(s.discounts)} / {fmt(s.tax)}</div></div>
           </div>
 

@@ -137,6 +137,7 @@ function SaleDetail({ id, onClose, onChanged }) {
           <div className="stack">
             <div className="row">{statusBadge(sale)}{sale.offline && <span className="badge">Recorded offline</span>}</div>
             {sale.offlineNote && <div className="notice"><span><strong>Check this offline sale:</strong> {sale.offlineNote}</span></div>}
+            {sale.installmentPlan && <p>Installment plan <strong>{sale.installmentPlan.planNumber}</strong> ({sale.installmentPlan.status})</p>}
             {sale.voided && <p><strong>Voided</strong> by {sale.voided.byName} on {dateTime(sale.voided.at, settings.timezone)}: {sale.voided.reason}</p>}
             {sale.returns?.length > 0 && (
               <div className="stack">
@@ -186,13 +187,15 @@ function VoidModal({ sale, onClose, onDone }) {
 function ReturnModal({ sale, onClose, onDone }) {
   const { settings } = useSession();
   const [qty, setQty] = useState({});
+  const [sn, setSn] = useState({}); // saleItemId -> [serials coming back]
   const [restock, setRestock] = useState({});
   const [reason, setReason] = useState("");
-  const [method, setMethod] = useState(sale.paymentMethod);
+  const [method, setMethod] = useState(sale.installmentPlan?.status === "active" ? "Credit" : ["Card", "Bank"].includes(sale.paymentMethod) ? sale.paymentMethod : "Cash");
   const [busy, setBusy] = useState(false);
-  const unit = (i) => i.price * (1 - sale.discount / 100) * (1 + sale.taxRate / 100);
-  const estimate = round2(sale.items.reduce((t, i) => t + round2(unit(i) * (Number(qty[i._id]) || 0)), 0));
-  const chosen = sale.items.filter((i) => Number(qty[i._id]) > 0);
+  const unit = (i) => (i.total / i.quantity) * (1 - sale.discount / 100) * (1 + sale.taxRate / 100);
+  const count = (i) => (i.serials?.length ? (sn[i._id] || []).length : Number(qty[i._id]) || 0);
+  const estimate = round2(sale.items.reduce((t, i) => t + round2(unit(i) * count(i)), 0));
+  const chosen = sale.items.filter((i) => count(i) > 0);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -200,7 +203,7 @@ function ReturnModal({ sale, onClose, onDone }) {
     try {
       const { data } = await api.post(`/sales/${sale._id}/returns`, {
         reason, refundMethod: method,
-        items: chosen.map((i) => ({ saleItemId: i._id, quantity: Number(qty[i._id]), restock: restock[i._id] !== false })),
+        items: chosen.map((i) => ({ saleItemId: i._id, quantity: count(i), restock: restock[i._id] !== false, serials: sn[i._id] || [] })),
       });
       toast.success(`${data.returnNumber}: refund ${money(data.refundAmount, settings.currency)} by ${method}`);
       onDone(data.sale);
@@ -218,9 +221,16 @@ function ReturnModal({ sale, onClose, onDone }) {
               return (
                 <tr key={i._id}>
                   <td>{i.name}</td><td className="num">{i.quantity}</td><td className="num">{i.returnedQuantity}</td>
-                  <td><input type="number" min="0" max={left} disabled={!left} value={qty[i._id] ?? ""} placeholder="0" style={{ width: 90 }}
-                    aria-label={`Return quantity for ${i.name}`}
-                    onChange={(e) => setQty({ ...qty, [i._id]: Math.min(left, Math.max(0, Math.floor(Number(e.target.value) || 0))) })} /></td>
+                  <td>{i.serials?.length ? i.serials.filter((z) => !z.returned).map((z) => (
+                    <label key={z.serial} className="check small">
+                      <input type="checkbox" checked={(sn[i._id] || []).includes(z.serial)}
+                        onChange={(e) => setSn({ ...sn, [i._id]: e.target.checked ? [...(sn[i._id] || []), z.serial] : (sn[i._id] || []).filter((x) => x !== z.serial) })} />{z.serial}
+                    </label>
+                  )) : (
+                    <input type="number" min="0" max={left} disabled={!left} value={qty[i._id] ?? ""} placeholder="0" style={{ width: 90 }}
+                      aria-label={`Return quantity for ${i.name}`}
+                      onChange={(e) => setQty({ ...qty, [i._id]: Math.min(left, Math.max(0, Math.floor(Number(e.target.value) || 0))) })} />
+                  )}</td>
                   <td><label className="check"><input type="checkbox" checked={restock[i._id] !== false} disabled={!left}
                     onChange={(e) => setRestock({ ...restock, [i._id]: e.target.checked })} />{restock[i._id] === false ? "No, damaged" : "Yes"}</label></td>
                 </tr>
@@ -231,7 +241,10 @@ function ReturnModal({ sale, onClose, onDone }) {
         <div className="form-grid">
           <div className="field"><label htmlFor="rr">Reason</label><input id="rr" required value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Expired, wrong size" /></div>
           <div className="field"><label htmlFor="rm">Refund by</label>
-            <select id="rm" value={method} onChange={(e) => setMethod(e.target.value)}><option>Cash</option><option>Card</option></select>
+            <select id="rm" value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="Cash">Cash</option><option value="Card">Card</option><option value="Bank">Bank transfer</option>
+              {sale.installmentPlan?.status === "active" && <option value="Credit">Take off the installment balance</option>}
+            </select>
           </div>
         </div>
         <div className="row between">

@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 import { fmt } from "../lib/money";
-import { dateTime, fullName } from "../lib/format";
+import { dateTime, dateOnly, fullName } from "../lib/format";
+
+const PAY_LABEL = { Cash: "Cash", Card: "Card", Bank: "Bank transfer", TradeIn: "Trade-in", Credit: "Installments", Deposit: "Deposit paid earlier", Split: "Split" };
 
 // 80mm thermal receipt. Also prints fine on A4 (narrow column).
 export function Receipt({ sale, settings }) {
@@ -30,8 +32,12 @@ export function Receipt({ sale, settings }) {
       <table><tbody>
         {sale.items.map((i, idx) => (
           <tr key={i._id || idx}>
-            <td>{i.name}<br /><span>{i.quantity} x {fmt(i.price)}</span></td>
-            <td className="r">{fmt(i.total ?? i.price * i.quantity)}</td>
+            <td>
+              {i.name}<br /><span>{i.quantity} x {fmt(i.price)}{i.discount > 0 ? ` less ${fmt(i.discount)}` : ""}</span>
+              {i.serials?.length > 0 && <><br /><span>S/N: {i.serials.map((z) => z.serial || z).join(", ")}</span></>}
+              {i.warrantyUntil && <><br /><span>Warranty until {dateOnly(i.warrantyUntil + "T12:00:00Z", settings.timezone)}</span></>}
+            </td>
+            <td className="r">{fmt(i.total ?? i.price * i.quantity - (i.discount || 0))}</td>
           </tr>
         ))}
       </tbody></table>
@@ -41,11 +47,22 @@ export function Receipt({ sale, settings }) {
         {sale.discountAmount > 0 && <tr><td>Discount ({sale.discount}%)</td><td className="r">-{fmt(sale.discountAmount)}</td></tr>}
         {sale.taxAmount > 0 && <tr><td>Tax ({sale.taxRate}%)</td><td className="r">{fmt(sale.taxAmount)}</td></tr>}
         <tr className="total"><td>TOTAL {cur}</td><td className="r">{fmt(sale.totalAmount)}</td></tr>
-        <tr><td>Paid by</td><td className="r">{sale.paymentMethod}</td></tr>
+        {(sale.payments?.length > 1 || sale.payments?.some((p) => !["Cash", "Card", "Bank"].includes(p.method)))
+          ? sale.payments.map((p, k) => <tr key={k}><td>{PAY_LABEL[p.method] || p.method}</td><td className="r">{fmt(p.amount)}</td></tr>)
+          : <tr><td>Paid by</td><td className="r">{PAY_LABEL[sale.payments?.[0]?.method || sale.paymentMethod] || sale.paymentMethod}</td></tr>}
         {sale.amountTendered != null && <tr><td>Cash given</td><td className="r">{fmt(sale.amountTendered)}</td></tr>}
         {sale.changeGiven != null && <tr><td>Change</td><td className="r">{fmt(sale.changeGiven)}</td></tr>}
         {sale.refundedAmount > 0 && <tr><td>Refunded</td><td className="r">-{fmt(sale.refundedAmount)}</td></tr>}
       </tbody></table>
+      {sale.tradeIn && <><hr /><div>Trade-in: {sale.tradeIn.description}{sale.tradeIn.serial ? ` (${sale.tradeIn.serial})` : ""}, valued {fmt(sale.tradeIn.value)}</div></>}
+      {sale.installmentPlan && (
+        <><hr /><div>
+          Installment plan {sale.installmentPlan.planNumber}: {sale.installmentPlan.months} monthly payments of {fmt(sale.installmentPlan.monthly)},
+          first due {dateOnly(sale.installmentPlan.firstDue + "T12:00:00Z", settings.timezone)}. Balance {fmt(sale.installmentPlan.financed)}
+          {sale.installmentPlan.fee > 0 ? ` (includes ${fmt(sale.installmentPlan.fee)} fee)` : ""}.
+        </div></>
+      )}
+      {sale.approvedBy && <div>Discount approved by {sale.approvedBy}</div>}
       <hr />
       {sale.pending && <div className="c">Saved offline. Invoice number is given when the till is back online.</div>}
       {settings.receiptFooter && <div className="c">{settings.receiptFooter}</div>}

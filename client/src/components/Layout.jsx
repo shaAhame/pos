@@ -8,10 +8,16 @@ const NAV = [
   { to: "/sales", label: "Sales", role: "cashier" },
   { to: "/shift", label: "My shift", role: "cashier" },
   { to: "/customers", label: "Customers", role: "cashier" },
+  { group: "Service", role: "cashier", any: ["repairs", "orders", "installments", "serials", "warranty"] },
+  { to: "/repairs", label: "Repairs", role: "cashier", feature: "repairs" },
+  { to: "/orders", label: "Orders", role: "cashier", feature: "orders" },
+  { to: "/installments", label: "Installments", role: "cashier", feature: "installments" },
+  { to: "/warranty", label: "Warranty lookup", role: "cashier", any: ["serials", "warranty"] },
   { group: "Stock", role: "manager" },
   { to: "/products", label: "Products", role: "manager" },
   { to: "/transfers", label: "Transfers", role: "manager" },
   { to: "/suppliers", label: "Suppliers", role: "manager" },
+  { to: "/claims", label: "Supplier claims", role: "manager", feature: "supplierClaims" },
   { group: "Business", role: "manager" },
   { to: "/reports", label: "Reports", role: "manager" },
   { to: "/shifts", label: "All shifts", role: "manager" },
@@ -22,7 +28,8 @@ const NAV = [
 ];
 
 export default function Layout() {
-  const { user, settings, can, online, queueCount, logout, shift, sync, multiBranch, activeLocations, location, locationId, chooseLocation } = useSession();
+  const { user, settings, can, has, online, queueCount, logout, shift, sync, multiBranch, activeLocations, location, locationId, chooseLocation } = useSession();
+  const show = (n) => can(n.role) && (!n.feature || has(n.feature)) && (!n.any || n.any.some(has));
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   const roleName = { owner: "Owner", manager: "Manager", cashier: "Cashier" }[user.role];
@@ -56,7 +63,7 @@ export default function Layout() {
       </header>
       <aside id="sidebar" className={`sidebar${open ? " open" : ""}`} onClick={() => setOpen(false)}>
         <nav aria-label="Main">
-          {NAV.filter((n) => can(n.role)).map((n) =>
+          {NAV.filter(show).map((n) =>
             n.group ? <div key={n.group} className="group">{n.group}</div>
               : <NavLink key={n.to} to={n.to} className={({ isActive }) => (isActive || loc.pathname.startsWith(n.to + "/") ? "active" : "")}>{n.label}</NavLink>
           )}

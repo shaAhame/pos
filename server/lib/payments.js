@@ -37,7 +37,7 @@ const shiftMoney = async (db, shift) => {
     cashSales,
     cardSales: r2(sum((r) => r.method === "Card" && (r.kind === "sale" || r.kind === "void"))),
     bankSales: r2(sum((r) => r.method === "Bank" && (r.kind === "sale" || r.kind === "void"))),
-    totalSales: r2(sum((r) => (r.kind === "sale" || r.kind === "void") && r.method !== "Credit")),
+    totalSales: r2(sum((r) => r.kind === "sale" || r.kind === "void")),   // full value of sales, however paid
     cashRefunds,
     cardRefunds: r2(-sum((r) => r.method !== "Cash" && r.method !== "Credit" && r.kind === "refund")),
     cashInstallments,

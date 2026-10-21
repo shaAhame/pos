@@ -35,7 +35,7 @@ export default function Users() {
                   <tr key={u._id} className={u.active ? "" : "voided"}>
                     <td><strong>{u.firstName} {u.lastName}</strong>{u._id === me._id && <span className="muted"> (you)</span>}</td>
                     <td>{u.email}</td>
-                    <td>{ROLE_NAME[u.role]}</td>
+                    <td>{ROLE_NAME[u.role]}{u.hasApprovalPin && <span className="badge" title="Can approve discounts" style={{ marginLeft: 6 }}>PIN</span>}</td>
                     {multiBranch && <td>{u.role === "owner" ? <span className="muted">All branches</span> : u.location?.name || <span className="danger-text">Not set</span>}</td>}
                     <td>{u.active ? <span className="badge green">Active</span> : <span className="badge">Disabled</span>}</td>
                     <td>{dateOnly(u.createdAt, settings.timezone)}</td>

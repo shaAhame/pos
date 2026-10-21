@@ -64,7 +64,8 @@ export default function Transfers() {
 }
 
 function NewTransfer({ onClose, onDone }) {
-  const { activeLocations, locationId } = useSession();
+  const { activeLocations, locationId, has } = useSession();
+  const [pickFor, setPickFor] = useState(null);
   const warehouse = activeLocations.find((l) => l.type === "warehouse");
   const [from, setFrom] = useState(locationId || warehouse?._id || activeLocations[0]?._id || "");
   const [to, setTo] = useState("");
@@ -85,15 +86,18 @@ function NewTransfer({ onClose, onDone }) {
   const add = (p) => {
     if (lines.some((l) => l.product === p._id)) return toast.info(`${p.name} is already in the list`);
     if (p.quantity <= 0) return toast.warn(`${p.name}: none in stock at this branch`);
-    setLines([...lines, { product: p._id, name: p.name, quantity: 1 }]);
+    const tracked = has("serials") && p.trackSerials;
+    setLines([...lines, { product: p._id, name: p.displayName || p.name, quantity: tracked ? 0 : 1, serials: [], tracked }]);
     setQ("");
+    if (tracked) setPickFor(p._id);
   };
   const invalid = lines.some((l) => !(l.quantity >= 1) || l.quantity > (available.get(l.product)?.quantity || 0));
+  const setSerials = (pid, serials) => setLines((ls) => ls.map((l) => (l.product === pid ? { ...l, serials, quantity: serials.length } : l)));
 
   const send = async () => {
     setBusy(true);
     try {
-      const { data } = await api.post("/transfers", { fromLocationId: from, toLocationId: to, note, items: lines.map((l) => ({ product: l.product, quantity: Number(l.quantity) })) });
+      const { data } = await api.post("/transfers", { fromLocationId: from, toLocationId: to, note, items: lines.map((l) => ({ product: l.product, quantity: Number(l.quantity), serials: l.serials })) });
       toast.success(`${data.transferNumber} sent. ${data.totalSent} units are on the way.`);
       onDone(data);
     } catch (err) { toast.error(errorMessage(err)); stock.reload(); } finally { setBusy(false); }
@@ -139,9 +143,14 @@ function NewTransfer({ onClose, onDone }) {
                   <tr key={l.product}>
                     <td>{l.name}</td>
                     <td className="num">{avail}</td>
-                    <td><input type="number" min="1" max={avail} value={l.quantity} style={{ width: 100 }} aria-label={`Quantity of ${l.name}`}
-                      onChange={(e) => setLines(lines.map((x) => (x.product === l.product ? { ...x, quantity: Math.floor(Number(e.target.value)) || "" } : x)))} />
-                      {l.quantity > avail && <div className="small danger-text">Only {avail} available</div>}</td>
+                    <td>{l.tracked ? (
+                      <><button className="btn small" onClick={() => setPickFor(l.product)}>{l.serials.length ? `${l.serials.length} units chosen` : "Choose units"}</button>
+                        {l.serials.length > 0 && <div className="small muted">{l.serials.join(", ")}</div>}</>
+                    ) : (
+                      <><input type="number" min="1" max={avail} value={l.quantity} style={{ width: 100 }} aria-label={`Quantity of ${l.name}`}
+                        onChange={(e) => setLines(lines.map((x) => (x.product === l.product ? { ...x, quantity: Math.floor(Number(e.target.value)) || "" } : x)))} />
+                        {l.quantity > avail && <div className="small danger-text">Only {avail} available</div>}</>
+                    )}</td>
                     <td className="actions-cell"><button className="btn ghost small" onClick={() => setLines(lines.filter((x) => x.product !== l.product))}>Remove</button></td>
                   </tr>
                 );
@@ -156,6 +165,35 @@ function NewTransfer({ onClose, onDone }) {
             <button className="btn primary" disabled={busy || !to || !lines.length || invalid} onClick={send}>Send transfer</button></div>
         </div>
       </div>
+      {pickFor && <UnitChooser productId={pickFor} locationId={from} initial={lines.find((l) => l.product === pickFor)?.serials || []}
+        onClose={() => setPickFor(null)} onDone={(serials) => { setSerials(pickFor, serials); setPickFor(null); }} />}
+    </Modal>
+  );
+}
+
+// Tick the units (serial / IMEI) to send from a branch.
+function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
+  const { data } = useApi(`/products/${productId}/serials`, { locationId });
+  const [chosen, setChosen] = useState(initial);
+  const [scan, setScan] = useState("");
+  const toggle = (s) => setChosen((c) => (c.includes(s) ? c.filter((x) => x !== s) : [...c, s]));
+  const onScan = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const s = scan.trim().toUpperCase();
+    const u = (data || []).find((x) => x.serial.toUpperCase() === s);
+    if (!u) toast.error(`${s} isn't in stock at this branch`); else if (!chosen.includes(u.serial)) toggle(u.serial);
+    setScan("");
+  };
+  return (
+    <Modal title="Choose units to send" onClose={onClose} labelledBy="uc-title"
+      footer={<div className="actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onDone(chosen)}>Use {chosen.length} units</button></div>}>
+      <div className="stack">
+        <div className="field"><label htmlFor="uc-scan">Scan a unit</label><input id="uc-scan" value={scan} onChange={(e) => setScan(e.target.value)} onKeyDown={onScan} autoFocus autoComplete="off" /></div>
+        {!data ? <Loading /> : !data.length ? <p className="muted">No units in stock at this branch.</p> : (
+          <div className="serial-grid">{data.map((u) => <button key={u._id} type="button" className="chip" aria-pressed={chosen.includes(u.serial)} onClick={() => toggle(u.serial)}>{u.serial}</button>)}</div>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -164,6 +202,7 @@ function TransferDetail({ id, onClose, onChanged }) {
   const { settings, user, can } = useSession();
   const { data: t, setData } = useApi(`/transfers/${id}`);
   const [got, setGot] = useState({});
+  const [missing, setMissing] = useState({}); // itemId -> [serial]
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const canReceive = t && t.status === "in_transit" && (user.role === "owner" || user.locationId === t.to._id);
@@ -171,7 +210,9 @@ function TransferDetail({ id, onClose, onChanged }) {
   const receive = async () => {
     setBusy(true);
     try {
-      const items = t.items.map((i) => ({ itemId: i._id, quantityReceived: got[i._id] === undefined || got[i._id] === "" ? i.quantitySent : Number(got[i._id]) }));
+      const items = t.items.map((i) => (i.serials?.length
+        ? { itemId: i._id, missingSerials: missing[i._id] || [] }
+        : { itemId: i._id, quantityReceived: got[i._id] === undefined || got[i._id] === "" ? i.quantitySent : Number(got[i._id]) }));
       const { data } = await api.post(`/transfers/${t._id}/receive`, { items, note });
       setData(data); onChanged();
       toast.success(data.totalReceived === data.totalSent ? `${data.transferNumber} received in full` : `${data.transferNumber} received with ${data.totalSent - data.totalReceived} missing`);
@@ -202,9 +243,19 @@ function TransferDetail({ id, onClose, onChanged }) {
             <tbody>
               {t.items.map((i) => (
                 <tr key={i._id}>
-                  <td>{i.name}</td>
+                  <td>{i.name}{i.serials?.length > 0 && !canReceive && <div className="small muted">{i.serials.map((z) => z.serial + (z.received === false ? " (missing)" : "")).join(", ")}</div>}</td>
                   <td className="num">{i.quantitySent}</td>
-                  {canReceive ? (
+                  {canReceive && i.serials?.length ? (
+                    <td>{i.serials.map((z) => {
+                      const miss = (missing[i._id] || []).includes(z.serial);
+                      return (
+                        <label key={z.serial} className="check small">
+                          <input type="checkbox" checked={!miss} onChange={(e) => setMissing({ ...missing, [i._id]: e.target.checked ? (missing[i._id] || []).filter((x) => x !== z.serial) : [...(missing[i._id] || []), z.serial] })} />
+                          {z.serial}{miss && <span className="danger-text"> missing</span>}
+                        </label>
+                      );
+                    })}</td>
+                  ) : canReceive ? (
                     <td><input type="number" min="0" max={i.quantitySent} style={{ width: 100 }} aria-label={`Arrived quantity of ${i.name}`}
                       value={got[i._id] ?? i.quantitySent} onChange={(e) => setGot({ ...got, [i._id]: e.target.value })} /></td>
                   ) : (

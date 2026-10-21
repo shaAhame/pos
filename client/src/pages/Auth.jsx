@@ -17,7 +17,7 @@ export function Login() {
   const { signIn } = useSession();
   const nav = useNavigate();
 
-  useEffect(() => { api.get("/auth/status").then((r) => setNeedsSetup(r.data.needsSetup)).catch(() => {}); }, []);
+  useEffect(() => { api.get("/auth/status").then((r) => setNeedsSetup(r.data.needsPlatformSetup)).catch(() => {}); }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -37,7 +37,7 @@ export function Login() {
         <Brand />
         <div><h1>Log in</h1><p className="muted">Use the email and password the shop owner gave you.</p></div>
         {needsSetup && (
-          <div className="notice green">This till hasn't been set up yet. <Link to="/setup">Set up the shop</Link></div>
+          <div className="notice green">This system hasn't been set up yet. <a href="/platform">Set up the platform</a></div>
         )}
         <Input label="Email" form={f} name="email" type="email" autoComplete="username" required />
         <Input label="Password" form={f} name="password" type="password" autoComplete="current-password" required />
@@ -48,42 +48,7 @@ export function Login() {
   );
 }
 
+// Shops are now created by the MacQuad admin; kept as a redirect for old bookmarks.
 export function Setup() {
-  const f = useForm({ shopName: "", firstName: "", lastName: "", email: "", password: "" });
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const { signIn } = useSession();
-  const nav = useNavigate();
-
-  const submit = async (e) => {
-    e.preventDefault();
-    setBusy(true); setError("");
-    try {
-      const { data } = await api.post("/auth/setup", f.values);
-      await signIn(data.token, data.user);
-      nav("/settings", { replace: true });
-    } catch (err) {
-      setError(errorMessage(err, "Setup failed"));
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <div className="auth">
-      <form className="card stack" onSubmit={submit}>
-        <Brand />
-        <div><h1>Set up your shop</h1><p className="muted">This creates the owner account. You can add staff afterwards.</p></div>
-        <Input label="Shop name" form={f} name="shopName" required placeholder="e.g. MAM Stores" />
-        <div className="form-grid">
-          <Input label="Your first name" form={f} name="firstName" required />
-          <Input label="Last name" form={f} name="lastName" required />
-        </div>
-        <Input label="Email" form={f} name="email" type="email" autoComplete="username" required />
-        <Input label="Password" form={f} name="password" type="password" autoComplete="new-password" required
-          hint="At least 8 characters, with upper and lower case letters and a number." />
-        {error && <div className="error" role="alert">{error}</div>}
-        <button className="btn primary big" disabled={busy}>{busy ? "Setting up…" : "Create owner account"}</button>
-        <Link to="/login" className="small">I already have an account</Link>
-      </form>
-    </div>
-  );
+  return <div className="auth"><div className="card stack"><h1>New shops are set up by your POS provider</h1><p className="muted">Ask them for your login, then <Link to="/login">log in here</Link>.</p></div></div>;
 }

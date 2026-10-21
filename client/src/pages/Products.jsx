@@ -22,6 +22,7 @@ export default function Products() {
   const [edit, setEdit] = useState(null);     // product or {} for new
   const [stock, setStock] = useState(null);   // product
   const [history, setHistory] = useState(null);
+  const [units, setUnits] = useState(null);
   const dq = useDebounced(q, 300);
   const [sortBy, order] = sort.split(":");
   const list = useApi("/products", { filter: dq || undefined, status, lowStock: lowStock || undefined, category: category || undefined, sortBy, order, page, limit: 25, withStock: showByBranch || undefined });
@@ -66,7 +67,10 @@ export default function Products() {
                 <tbody>
                   {list.data.products.map((p) => (
                     <tr key={p._id} className={p.active ? "" : "voided"}>
-                      <td><strong>{p.name}</strong>{!p.active && <> <span className="badge">Archived</span></>}{p.description && <div className="small muted">{p.description}</div>}</td>
+                      <td><strong>{p.displayName || p.name}</strong>{!p.active && <> <span className="badge">Archived</span></>}
+                        {p.trackSerials && <> <span className="badge" title="Each unit has a serial / IMEI">S/N</span></>}
+                        {p.warrantyMonths > 0 && <span className="small muted"> {p.warrantyMonths}-month warranty</span>}
+                        {p.description && <div className="small muted">{p.description}</div>}</td>
                       <td>{p.category}</td>
                       <td className="small">{p.barcode || <span className="muted">None</span>}</td>
                       <td className="num muted">{p.costPrice != null ? fmt(p.costPrice) : ""}</td>
@@ -82,6 +86,7 @@ export default function Products() {
                       <td className="actions-cell">
                         <button className="btn small" onClick={() => setStock(p)}>Stock</button>{" "}
                         <button className="btn small" onClick={() => setHistory(p)}>History</button>{" "}
+                        {p.trackSerials && <><button className="btn small" onClick={() => setUnits(p)}>Units</button>{" "}</>}
                         {owner && <button className="btn small" onClick={() => setEdit(p)}>Edit</button>}
                       </td>
                     </tr>
@@ -96,24 +101,32 @@ export default function Products() {
       {edit && <ProductForm product={edit} categories={cats.data || []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); reload(); }} />}
       {stock && <StockForm product={stock} onClose={() => setStock(null)} onSaved={() => { setStock(null); reload(); }} />}
       {history && <StockHistory product={history} onClose={() => setHistory(null)} />}
+      {units && <UnitsModal product={units} onClose={() => setUnits(null)} />}
     </>
   );
 }
 
 function ProductForm({ product, categories, onClose, onSaved }) {
   const isNew = !product._id;
-  const { activeLocations, locationId, multiBranch } = useSession();
+  const { activeLocations, locationId, multiBranch, has } = useSession();
   const [openingAt, setOpeningAt] = useState(locationId || activeLocations[0]?._id || "");
+  const [trackSerials, setTrackSerials] = useState(!!product.trackSerials);
+  const [openingSerials, setOpeningSerials] = useState("");
+  const serialList = openingSerials.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
   const f = useForm({
     name: product.name || "", category: product.category || "", price: product.price ?? "", costPrice: product.costPrice ?? "",
     barcode: product.barcode || "", description: product.description || "", lowStockThreshold: product.lowStockThreshold ?? 5,
-    quantity: "",
+    quantity: "", model: product.model || "", variant: product.variant || "", warrantyMonths: product.warrantyMonths ?? 0,
   });
   const [busy, setBusy] = useState(false);
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const body = clean(f.values, ["price", "costPrice", "lowStockThreshold", "quantity"]);
+    const body = clean(f.values, ["price", "costPrice", "lowStockThreshold", "quantity", "warrantyMonths"]);
+    if (!has("variants")) { delete body.model; delete body.variant; }
+    if (!has("warranty")) delete body.warrantyMonths; else if (body.warrantyMonths === null) body.warrantyMonths = 0;
+    if (has("serials") && trackSerials !== !!product.trackSerials) body.trackSerials = trackSerials;
+    if (isNew && trackSerials) { body.serials = serialList; body.quantity = serialList.length; }
     if (!isNew) delete body.quantity; else if (body.quantity === null) body.quantity = 0;
     if (isNew && multiBranch && body.quantity > 0) body.locationId = openingAt;
     try {
@@ -142,7 +155,22 @@ function ProductForm({ product, categories, onClose, onSaved }) {
           <Input label="Barcode" form={f} name="barcode" hint="Scan it here, or leave blank" />
           <Input label="Selling price" form={f} name="price" type="number" min="0" step="0.01" required />
           <Input label="Cost price" form={f} name="costPrice" type="number" min="0" step="0.01" hint="What you pay. Used for profit reports." />
-          {isNew && <Input label="Opening stock" form={f} name="quantity" type="number" min="0" step="1" hint="How many you have now" />}
+          {has("variants") && <Input label="Model / family (optional)" form={f} name="model" hint="Groups variants, e.g. Galaxy A15" />}
+          {has("variants") && <Input label="Variant (optional)" form={f} name="variant" hint="e.g. 128GB Black. Shown after the name." />}
+          {has("warranty") && <Input label="Warranty (months)" form={f} name="warrantyMonths" type="number" min="0" max="240" step="1" hint="0 = no warranty. Printed on the receipt." />}
+          {has("serials") && (
+            <div className="field span-all">
+              <label className="check"><input type="checkbox" checked={trackSerials} onChange={(e) => setTrackSerials(e.target.checked)} />Track each unit by serial / IMEI number</label>
+              <span className="hint">For phones, laptops, TVs: every unit sold, moved or returned is identified. Accessories usually don't need this.</span>
+            </div>
+          )}
+          {isNew && !trackSerials && <Input label="Opening stock" form={f} name="quantity" type="number" min="0" step="1" hint="How many you have now" />}
+          {isNew && trackSerials && (
+            <div className="field span-all">
+              <label htmlFor="osn">Serial / IMEI numbers of units you have now ({serialList.length})</label>
+              <textarea id="osn" value={openingSerials} onChange={(e) => setOpeningSerials(e.target.value)} placeholder="Scan each unit; one per line" rows={4} />
+            </div>
+          )}
           {isNew && multiBranch && (
             <div className="field"><label htmlFor="oat">Opening stock is at</label>
               <select id="oat" value={openingAt} onChange={(e) => setOpeningAt(e.target.value)}>
@@ -174,13 +202,26 @@ function StockForm({ product, onClose, onSaved }) {
   const suppliers = useApi("/suppliers", { limit: 500 });
   const f = useForm({ quantity: "", supplierId: "", unitCost: "", note: "" });
   const [busy, setBusy] = useState(false);
+  const { has } = useSession();
+  const tracked = has("serials") && product.trackSerials;
+  const [snIn, setSnIn] = useState("");
+  const [snOut, setSnOut] = useState("");
+  const split = (t) => t.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
   const q = Number(f.values.quantity);
-  const after = current == null ? "" : type === "receive" ? current + (q || 0) : (f.values.quantity === "" ? current : q);
+  const after = current == null ? "" : tracked
+    ? current + split(snIn).length - (type === "adjust" ? split(snOut).length : 0)
+    : type === "receive" ? current + (q || 0) : (f.values.quantity === "" ? current : q);
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post(`/products/${product._id}/stock`, { type, ...clean(f.values, ["quantity", "unitCost"]), ...(pickBranch ? { locationId: branch } : {}) });
+      const base = { type, ...clean(f.values, ["quantity", "unitCost"]), ...(pickBranch ? { locationId: branch } : {}) };
+      if (tracked) {
+        delete base.quantity;
+        if (type === "receive") base.serials = split(snIn);
+        else { base.addSerials = split(snIn); base.removeSerials = split(snOut); }
+      }
+      await api.post(`/products/${product._id}/stock`, base);
       toast.success(`Stock updated: ${product.name} now ${after}`);
       onSaved();
     } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); }
@@ -200,7 +241,22 @@ function StockForm({ product, onClose, onSaved }) {
           </div>
         )}
         <p className="muted">In stock now: <strong>{current ?? "…"}</strong>. After this: <strong>{after}</strong>.</p>
-        {type === "receive" ? (
+        {tracked ? (
+          <div className="form-grid">
+            <div className="field span-all"><label htmlFor="sn-in">{type === "receive" ? "Serial / IMEI of each unit received" : "Units found that weren't in the system"} ({split(snIn).length})</label>
+              <textarea id="sn-in" rows={4} value={snIn} onChange={(e) => setSnIn(e.target.value)} placeholder="Scan each unit; one per line" autoFocus /></div>
+            {type === "adjust" && <div className="field span-all"><label htmlFor="sn-out">Units missing from the shelf ({split(snOut).length})</label>
+              <textarea id="sn-out" rows={3} value={snOut} onChange={(e) => setSnOut(e.target.value)} placeholder="Serials that couldn't be found" /></div>}
+            {type === "receive" && <Input label="Cost per unit (optional)" form={f} name="unitCost" type="number" min="0" step="0.01" />}
+            {type === "receive" && (
+              <div className="field"><label htmlFor="sup2">Supplier (optional)</label>
+                <select id="sup2" value={f.values.supplierId} onChange={(e) => f.set("supplierId", e.target.value)}>
+                  <option value="">Not recorded</option>{(suppliers.data?.suppliers || []).map((x) => <option key={x._id} value={x._id}>{x.name} ({x.company})</option>)}
+                </select></div>
+            )}
+            <Input label={type === "adjust" ? "Reason" : "Note (optional)"} form={f} name="note" required={type === "adjust"} className="span-all" />
+          </div>
+        ) : type === "receive" ? (
           <div className="form-grid">
             <Input label="Units received" form={f} name="quantity" type="number" min="1" step="1" required />
             <Input label="Cost per unit (optional)" form={f} name="unitCost" type="number" min="0" step="0.01" hint="Updates the product's cost price" />
@@ -224,6 +280,8 @@ function StockForm({ product, onClose, onSaved }) {
 }
 
 const REASONS = {
+  repair_part: "Used in a repair", repair_part_back: "Repair part returned", claim_out: "Sent to supplier (claim)",
+  claim_back: "Back from supplier", trade_in: "Taken as trade-in", write_off: "Written off",
   initial: "Opening stock", sale: "Sold", void: "Sale voided", return: "Returned by customer", receive: "Delivery received",
   adjust: "Stock count", offline_shortfall: "Sold offline beyond stock",
   transfer_out: "Sent to another branch", transfer_in: "Received from another branch",
@@ -255,6 +313,28 @@ function StockHistory({ product, onClose }) {
           </table>
         </div>
       )}
+    </Modal>
+  );
+}
+
+const UNIT_STATUS = { in_stock: "In stock", in_transit: "On the way", sold: "Sold", defective: "Faulty", with_supplier: "With supplier", written_off: "Written off", missing: "Missing", in_repair: "In repair" };
+
+function UnitsModal({ product, onClose }) {
+  const [all, setAll] = useState(false);
+  const { data, loading } = useApi(`/products/${product._id}/serials`, { status: all ? "all" : "in_stock" });
+  return (
+    <Modal title={`Units: ${product.displayName || product.name}`} onClose={onClose} wide>
+      <div className="stack">
+        <label className="check"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />Show sold and other units too</label>
+        {loading && !data ? <Loading /> : !data?.length ? <Empty title="No units" /> : (
+          <div className="table-wrap" style={{ maxHeight: "55vh", overflowY: "auto" }}>
+            <table className="data">
+              <thead><tr><th>Serial / IMEI</th><th>Status</th><th>Branch</th><th>Warranty until</th></tr></thead>
+              <tbody>{data.map((u) => <tr key={u._id}><td><strong>{u.serial}</strong></td><td>{UNIT_STATUS[u.status] || u.status}</td><td>{u.locationName || ""}</td><td>{u.warrantyUntil || ""}</td></tr>)}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -26,7 +26,8 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     const url = err.config?.url || "";
-    if (err.response?.status === 401 && !url.startsWith("/auth/login") && !url.startsWith("/auth/setup") && getToken()) {
+    const suspended = err.response?.status === 403 && err.response.data?.code === "BUSINESS_SUSPENDED";
+    if ((err.response?.status === 401 || suspended) && !url.startsWith("/auth/login") && getToken()) {
       setToken(null);
       listeners.forEach((fn) => fn(err.response.data?.message));
     }

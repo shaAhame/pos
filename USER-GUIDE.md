@@ -14,6 +14,10 @@
 | Branches, stock transfers between branches | | | ✓ |
 | Confirm a transfer arrived at your branch | | ✓ | ✓ |
 | Staff logins, employees and salaries, shop settings | | | ✓ |
+| Repairs, orders, installment payments, warranty lookup* | ✓ | ✓ | ✓ |
+| Supplier claims* | | ✓ | ✓ |
+
+\* Only if MacQuad has switched the feature on for your business.
 
 ## Start of the day (cashier)
 1. Log in. The till asks you to **open your shift**.
@@ -68,3 +72,37 @@ Receipts printed while offline say "Receipt (offline)"; the invoice number is gi
 3. If the goods never leave, the owner can **Cancel transfer** while it's still on the way, and everything goes back.
 
 Every step shows in each product's **History**, with the transfer number.
+
+## Electronics and phone shops
+These appear when MacQuad switches them on for your business.
+
+**Serial / IMEI numbers.** Tick *Track serial / IMEI* on a product, and enter one serial per unit whenever stock
+comes in (opening stock, deliveries, transfers). At the till, scan the IMEI and that exact unit goes on the sale; tap
+the product instead to choose a unit from the list. The receipt shows each serial and its warranty end date.
+
+**Variants.** Fill in *Model* and *Variant* (e.g. "8/256 Navy") on a product. Each variant is its own product with its
+own price and stock, and the till shows the full name.
+
+**Warranty lookup.** Type a serial, IMEI, invoice number or phone number to see when and where it was sold and
+whether it's still under warranty.
+
+**Payments at the till.** Split one sale across cash, card and bank transfer. Trade-in: the customer's old phone
+counts as part payment (optionally put it into stock). Installments: choose a saved customer, take a down payment,
+choose the months; the system makes the payment schedule. A cashier's discount above the shop limit needs a manager
+to approve with their PIN (managers set their PIN under *Account*).
+
+**Installments.** See every plan, what's owed, and who's late. Open a plan and *Take a payment* when the customer
+pays. A plan can't be voided once payments have been taken; use a return instead.
+
+**Repairs.** *Book in a repair* with the customer, device, serial and fault, and print the job slip for the customer.
+Move the job through *Checking → Waiting for parts → Repairing → Ready to collect*. Parts used come out of stock.
+If the serial was sold here and is still under warranty, the repair is free automatically. *Customer collects*
+takes payment and prints a receipt.
+
+**Orders with a deposit.** For something not in stock: take the customer's details and a deposit. *Mark ready* when it
+arrives, then *Customer collects*: scan the serials, take the balance, receipt printed. Cancelling gives the deposit
+back.
+
+**Supplier claims (manager).** Send faulty units back to the supplier: the unit leaves stock. When the supplier
+responds, record whether they repaired it, replaced it (enter the new serial; it goes back on the shelf), gave
+credit, or rejected the claim.

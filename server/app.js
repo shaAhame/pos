@@ -38,7 +38,7 @@ app.use("/api/platform", require("./routes/platform"));   // MacQuad admins (sep
 // Everything below needs a logged-in shop user of an active business (and knows the branch).
 app.use("/api", requireAuth, withLocation);
 app.use("/api/settings", require("./routes/settings"));
-app.use("/api/users", (req, res, next) => (req.path === "/approvers" ? next() : requireRole("owner")(req, res, next)), require("./routes/users"));
+app.use("/api/users", (req, res, next) => (["/approvers", "/staff"].includes(req.path) ? next() : requireRole("owner")(req, res, next)), require("./routes/users"));
 app.use("/api/locations", require("./routes/locations"));
 app.use("/api/transfers", require("./routes/transfers"));
 app.use("/api/employees", people.employees);

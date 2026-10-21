@@ -1,8 +1,10 @@
 // Must match server/lib/sales.js so the till screen and the receipt always agree.
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
+// line: { price, quantity, discount } (discount = amount off that line)
+export const lineTotal = (l) => round2(l.price * l.quantity - (Number(l.discount) || 0));
 export const computeTotals = (lines, discountPct = 0, taxPct = 0) => {
-  const subtotal = round2(lines.reduce((s, l) => s + round2(l.price * l.quantity), 0));
+  const subtotal = round2(lines.reduce((s, l) => s + lineTotal(l), 0));
   const discountAmount = round2((subtotal * discountPct) / 100);
   const taxAmount = round2(((subtotal - discountAmount) * taxPct) / 100);
   const totalAmount = round2(subtotal - discountAmount + taxAmount);

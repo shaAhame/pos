@@ -46,9 +46,12 @@ const SummaryTable = ({ s, shift, cur, blind }) => blind ? (
   <table className="data"><tbody>
     <tr><td>Opening cash</td><td className="num">{fmt(shift.openingFloat)}</td></tr>
     <tr><td>Cash sales ({s.salesCount} sales in total)</td><td className="num">{s.cashSales > 0 ? "+" : ""}{fmt(s.cashSales)}</td></tr>
+    {s.cashInstallments > 0 && <tr><td>Installments collected in cash</td><td className="num">+{fmt(s.cashInstallments)}</td></tr>}
+    {s.cashDeposits !== 0 && s.cashDeposits !== undefined && <tr><td>Order deposits in cash (less refunds)</td><td className="num">{s.cashDeposits > 0 ? "+" : "−"}{fmt(Math.abs(s.cashDeposits))}</td></tr>}
     <tr><td>Cash refunds</td><td className="num">{s.cashRefunds > 0 ? "−" : ""}{fmt(s.cashRefunds)}</td></tr>
     <tr><td><strong>Cash that should be in the drawer</strong></td><td className="num"><strong>{money(s.expectedCash, cur)}</strong></td></tr>
     <tr><td className="muted">Card sales (not in drawer)</td><td className="num muted">{fmt(s.cardSales)}</td></tr>
+    {s.bankSales > 0 && <tr><td className="muted">Bank transfers (not in drawer)</td><td className="num muted">{fmt(s.bankSales)}</td></tr>}
     <tr><td className="muted">Card refunds</td><td className="num muted">{fmt(s.cardRefunds)}</td></tr>
     <tr><td className="muted">Voided sales</td><td className="num muted">{s.voidCount} ({fmt(s.voidTotal)})</td></tr>
   </tbody></table>

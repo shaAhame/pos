@@ -10,7 +10,7 @@ export default function Settings() {
   const { settings, refreshSettings } = useSession();
   const f = useForm(settings);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { f.reset(settings); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [settings.updatedAt]);
+  useEffect(() => { f.reset(settings); }, [settings.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (e) => {
     e.preventDefault();

@@ -1,6 +1,7 @@
 # Shop POS
 
-Point of sale for small shops: barcode till with cash change, shifts and cash-up, returns and voids,
+Multi-business point of sale run by one provider (MacQuad): each client business, whether grocery, electronics or general,
+gets its own isolated shop with features switched on per client. Barcode till with cash change, shifts and cash-up, returns and voids,
 stock receiving and counts with full history, staff roles, reports with CSV export, and offline selling
 that syncs when the connection returns.
 
@@ -43,6 +44,15 @@ CI runs both on every push (`.github/workflows/test.yml`).
   Scoping is enforced server-side in every route, not just hidden in the UI.
 - **Transfers** take stock out of the source immediately (status `in_transit`), add only what the destination confirms
   (`transfer_in`), and record shortages (`transfer_short`). The owner can cancel while in transit (`transfer_cancel`).
+- **Multi-tenant.** Every table carries `business_id`; foreign keys are composite `(id, business_id)`, so the database
+  itself refuses a row that points into another business. Numbering (invoices, returns, jobs…) is per business via
+  `counters`. Platform admins (`platform_users`) use a separate token scope and never touch shop endpoints.
+- **Feature switches.** `businesses.features` overrides the type preset (`server/lib/features.js`); routes are guarded
+  with `requireFeature`, the UI hides what's off.
+- **Payments ledger.** Every money movement (sale, void, refund, installment, deposit) is a signed row in `payments`, so
+  split payments, trade-ins, credit and deposits all add up the same way in cash-up and reports.
+- **Serials.** Each unit is a `serials` row with a status and full event history; sales, returns, transfers, repairs
+  and claims all move units, never just counts.
 - **Migrations** are numbered SQL files in `server/migrations`, applied once each at start-up under an advisory lock.
 
 ## Deploying elsewhere

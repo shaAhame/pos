@@ -65,6 +65,13 @@ export function SessionProvider({ children }) {
     setOwnerLocationIdState(id || null);
   }, []);
 
+  // Re-read the user (and the business's features) from the server.
+  const refreshMe = useCallback(async () => {
+    const { data } = await api.get("/auth/me");
+    setUser(data); save("pos.user", data);
+    return data;
+  }, []);
+
   const refreshShift = useCallback(async () => {
     const { data } = await api.get("/shifts/current");
     setShift(data);
@@ -89,7 +96,7 @@ export function SessionProvider({ children }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [refreshSettings, refreshShift]);
+  }, [refreshSettings, refreshShift, refreshLocations]);
 
   const signIn = useCallback(async (token, u) => {
     setToken(token);
@@ -134,6 +141,8 @@ export function SessionProvider({ children }) {
   }, [user, sync]);
 
   const can = useCallback((role) => !!user && RANK[user.role] >= RANK[role], [user]);
+  // Is a feature switched on for this business (set by MacQuad per client)?
+  const has = useCallback((feature) => !!user?.business?.features?.[feature], [user]);
 
   // The branch this screen is about: staff -> their own; owner -> their choice (null = all branches).
   const activeLocations = useMemo(() => locations.filter((l) => l.active), [locations]);
@@ -150,8 +159,8 @@ export function SessionProvider({ children }) {
   const value = useMemo(() => ({
     user, settings, shift, ready, online, queueCount, failedCount,
     locations, activeLocations, multiBranch, location, locationId,
-    signIn, logout, can, setShift, setOnline, refreshShift, refreshSettings, refreshLocations, chooseLocation, sync,
-  }), [user, settings, shift, ready, online, queueCount, failedCount, locations, activeLocations, multiBranch, location, locationId,
+    signIn, logout, can, has, setShift, setOnline, refreshShift, refreshSettings, refreshLocations, chooseLocation, sync, refreshMe,
+  }), [has, refreshMe, user, settings, shift, ready, online, queueCount, failedCount, locations, activeLocations, multiBranch, location, locationId,
     signIn, logout, can, setShift, refreshShift, refreshSettings, refreshLocations, chooseLocation, sync]);
 
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;

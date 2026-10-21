@@ -246,6 +246,12 @@ table.data td.actions-cell { text-align: right; white-space: nowrap; }
 .seg button { min-height: 48px; border: 0; background: var(--surface); font: inherit; font-weight: 700; cursor: pointer; }
 .seg button[aria-pressed=true] { background: var(--ink); color: #fff; }
 
+.serial-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border-radius: 999px; background: var(--line-2); font-size: var(--step--1); font-weight: 700; font-variant-numeric: tabular-nums; }
+.serial-chip button { border: 0; background: transparent; cursor: pointer; font: inherit; font-size: 15px; line-height: 1; padding: 0 4px; color: var(--ink-3); }
+.serial-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
+.pay-rows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.seg.three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 600px) { .pay-rows { grid-template-columns: 1fr; } }
 .notice { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 14px; border-radius: var(--radius-m); background: var(--saffron-wash); color: #5E3F05; margin-bottom: 16px; }
 .notice.red { background: var(--red-wash); color: var(--red); }
 .notice.green { background: var(--green-wash); color: var(--green-ink); }
@@ -287,6 +293,12 @@ table.data td.actions-cell { text-align: right; white-space: nowrap; }
   #print-root { display: block !important; }
   .receipt { width: 100%; padding: 0; }
 }
+
+/* ---------- platform admin ---------- */
+.platform { min-height: 100vh; display: grid; grid-template-rows: var(--topbar) 1fr; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.feature-grid fieldset { margin: 0; }
+.feature-grid legend { padding: 0 4px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {

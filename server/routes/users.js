@@ -43,6 +43,15 @@ router.get("/approvers", async (req, res) => {
   res.json(rows.map((u) => ({ _id: u.id, name: `${u.first_name} ${u.last_name}`, role: u.role })));
 });
 
+// Names of active staff (e.g. to pick a technician on a repair). Any logged-in user.
+router.get("/staff", async (req, res) => {
+  const { rows } = await query(
+    "select id, first_name, last_name, role, location_id from users where business_id = $1 and active order by first_name",
+    [req.biz]
+  );
+  res.json(rows.map((u) => ({ _id: u.id, name: `${u.first_name} ${u.last_name}`, role: u.role, locationId: u.location_id })));
+});
+
 router.post(
   "/",
   validate(Joi.object({
