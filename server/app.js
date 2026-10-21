@@ -3,7 +3,7 @@ const fs = require("fs");
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
-const { requireAuth, requireRole } = require("./middleware/auth");
+const { requireAuth, requireRole, requireFeature } = require("./middleware/auth");
 const { withLocation } = require("./lib/location");
 const { errorHandler } = require("./lib/errors");
 const { query } = require("./lib/db");
@@ -29,15 +29,18 @@ app.get("/api/health", async (req, res) => {
 
 const { router: authRouter } = require("./routes/auth");
 const people = require("./routes/people");
+const either = (...names) => (req, res, next) =>
+  names.some((n) => req.business.features[n]) ? next() : res.status(403).json({ message: "This feature isn't switched on for your business", code: "FEATURE_OFF" });
 
 app.use("/api/auth", authRouter);
+app.use("/api/platform", require("./routes/platform"));   // MacQuad admins (separate login)
 
-// Everything below needs a logged-in, active user (and knows which branch the request is about).
+// Everything below needs a logged-in shop user of an active business (and knows the branch).
 app.use("/api", requireAuth, withLocation);
+app.use("/api/settings", require("./routes/settings"));
+app.use("/api/users", (req, res, next) => (req.path === "/approvers" ? next() : requireRole("owner")(req, res, next)), require("./routes/users"));
 app.use("/api/locations", require("./routes/locations"));
 app.use("/api/transfers", require("./routes/transfers"));
-app.use("/api/settings", require("./routes/settings"));
-app.use("/api/users", requireRole("owner"), require("./routes/users"));
 app.use("/api/employees", people.employees);
 app.use("/api/customers", people.customers);
 app.use("/api/suppliers", people.suppliers);
@@ -45,6 +48,11 @@ app.use("/api/products", require("./routes/products"));
 app.use("/api/shifts", require("./routes/shifts").router);
 app.use("/api/sales", require("./routes/sales"));
 app.use("/api/reports", requireRole("manager"), require("./routes/reports"));
+app.use("/api/serials", either("serials", "warranty"), require("./routes/serials"));
+app.use("/api/repairs", requireFeature("repairs"), require("./routes/repairs"));
+app.use("/api/claims", requireFeature("supplierClaims"), requireRole("manager"), require("./routes/claims"));
+app.use("/api/installments", requireFeature("installments"), require("./routes/installments"));
+app.use("/api/orders", requireFeature("orders"), require("./routes/orders"));
 
 app.use("/api", (req, res) => res.status(404).json({ message: "Not found" }));
 

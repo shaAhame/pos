@@ -12,11 +12,13 @@ const fail = (status, message, extra) => { throw new HttpError(status, message, 
 
 const friendlyField = (constraint = "") => {
   const map = {
-    products_barcode_key: "Barcode",
+    products_biz_barcode_key: "Barcode",
     users_email_key: "Email",
-    customers_email_key: "Email",
-    employees_email_key: "Email",
-    suppliers_email_key: "Email",
+    platform_users_email_key: "Email",
+    employees_biz_email_key: "Email",
+    suppliers_biz_email_key: "Email",
+    locations_biz_name_key: "A branch with that name",
+    serials_biz_serial_key: "Serial number",
     shifts_one_open_per_user: "Open shift",
   };
   return map[constraint] || "Value";

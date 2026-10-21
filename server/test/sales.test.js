@@ -166,7 +166,9 @@ test("void: manager only, restores stock, once only", async () => {
   assert.equal(v.paymentStatus, "Voided");
   assert.equal(v.voided.reason, "Rang up twice");
   assert.equal(v.voided.byName, "Mia manager");
-  assert.equal((await shop.manager.delete(`/api/sales/${s._id}`)).status, 404);
+  const del = await shop.manager.delete(`/api/sales/${s._id}`);
+  assert.equal(del.status, 405);
+  assert.match(del.body.message, /Void the sale instead/);
 });
 
 test("void of an offline shortfall sale only returns what was actually taken from stock", async () => {

@@ -5,29 +5,28 @@ const { query } = require("./db");
 const { isId } = require("./util");
 const { fail } = require("./errors");
 
-const getLocation = async (db, id) =>
-  id ? (await db.query("select * from locations where id = $1", [id])).rows[0] || null : null;
+const getLocation = async (db, businessId, id) =>
+  id ? (await db.query("select * from locations where id = $1 and business_id = $2", [id, businessId])).rows[0] || null : null;
 
-// Middleware: sets req.location (a location row, or null = all branches for the owner).
 const withLocation = async (req, res, next) => {
   const u = req.user;
   if (u.role !== "owner") {
-    req.location = await getLocation({ query }, u.locationId);
+    req.location = await getLocation({ query }, req.biz, u.locationId);
     if (!req.location) return res.status(403).json({ message: "Your login isn't linked to a branch. Ask the owner." });
     return next();
   }
   const h = req.headers["x-location-id"];
-  req.location = isId(h) ? await getLocation({ query }, h) : null;
+  req.location = isId(h) ? await getLocation({ query }, req.biz, h) : null;
   next();
 };
 
-// For actions that happen in one physical place (selling, opening a shift, counting stock):
-// use the chosen branch; if the business has exactly one branch, use that.
+// For actions that happen in one physical place: the chosen branch, or the only branch.
 const requireOneLocation = async (req, { storeOnly = false } = {}) => {
   let loc = req.location;
   if (!loc) {
     const { rows } = await query(
-      `select * from locations where active ${storeOnly ? "and type = 'store'" : ""} order by created_at limit 2`
+      `select * from locations where business_id = $1 and active ${storeOnly ? "and type = 'store'" : ""} order by created_at limit 2`,
+      [req.biz]
     );
     if (rows.length === 1) loc = rows[0];
   }
@@ -37,7 +36,6 @@ const requireOneLocation = async (req, { storeOnly = false } = {}) => {
   return loc;
 };
 
-// Owner: any branch. Others: only their own.
 const canAccessLocation = (user, locationId) => user.role === "owner" || user.locationId === locationId;
 
 module.exports = { withLocation, requireOneLocation, getLocation, canAccessLocation };

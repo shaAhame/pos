@@ -11,9 +11,10 @@ router.get("/", async (req, res) => {
     `select l.*,
             (select count(*)::int from users u where u.location_id = l.id and u.active) as staff_count,
             (select coalesce(sum(quantity),0)::int from product_stock ps where ps.location_id = l.id) as units_in_stock
-       from locations l order by l.active desc, l.type desc, l.created_at`
+       from locations l where l.business_id = $1 order by l.active desc, l.type desc, l.created_at`,
+    [req.biz]
   );
-  res.json(rows.map((r) => toApi(r)));
+  res.json(rows.map((r) => toApi(r, ["business_id"])));
 });
 
 const fields = {
@@ -29,14 +30,17 @@ router.post(
     const b = req.body;
     const loc = await tx(async (db) => {
       const { rows } = await db.query(
-        "insert into locations (name, type, address, phone) values ($1,$2,$3,$4) returning *",
-        [b.name, b.type, b.address || "", b.phone || ""]
+        "insert into locations (business_id, name, type, address, phone) values ($1,$2,$3,$4,$5) returning *",
+        [req.biz, b.name, b.type, b.address || "", b.phone || ""]
       );
       // Every product gets a 0-stock row in the new branch.
-      await db.query("insert into product_stock (product_id, location_id, quantity) select id, $1, 0 from products on conflict do nothing", [rows[0].id]);
+      await db.query(
+        "insert into product_stock (business_id, product_id, location_id, quantity) select $2, id, $1, 0 from products where business_id = $2 on conflict do nothing",
+        [rows[0].id, req.biz]
+      );
       return rows[0];
     });
-    res.status(201).json(toApi(loc));
+    res.status(201).json(toApi(loc, ["business_id"]));
   }
 );
 
@@ -48,14 +52,14 @@ router.put(
   async (req, res) => {
     const b = req.body;
     const loc = await tx(async (db) => {
-      const { rows: [cur] } = await db.query("select * from locations where id = $1 for update", [req.params.id]);
+      const { rows: [cur] } = await db.query("select * from locations where id = $1 and business_id = $2 for update", [req.params.id, req.biz]);
       if (!cur) fail(404, "Branch not found");
       if (b.active === false && cur.active) {
         const { rows: [c] } = await db.query(
           `select (select count(*)::int from shifts where location_id = $1 and closed_at is null) as open_shifts,
                   (select count(*)::int from transfers where status = 'in_transit' and (from_location_id = $1 or to_location_id = $1)) as transfers,
-                  (select count(*)::int from locations where active and id <> $1) as others`,
-          [cur.id]
+                  (select count(*)::int from locations where active and id <> $1 and business_id = $2) as others`,
+          [cur.id, req.biz]
         );
         if (!c.others) fail(400, "You need at least one active branch");
         if (c.open_shifts) fail(409, "Close the open shifts in this branch first");
@@ -72,7 +76,7 @@ router.put(
       );
       return rows[0];
     });
-    res.json(toApi(loc));
+    res.json(toApi(loc, ["business_id"]));
   }
 );
 

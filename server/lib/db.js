@@ -5,6 +5,8 @@ const { Pool, types } = require("pg");
 // NUMERIC (money) and BIGINT come back as JS numbers instead of strings.
 types.setTypeParser(1700, (v) => (v === null ? null : parseFloat(v)));
 types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
+// DATE columns (warranty end, due dates) stay as plain "YYYY-MM-DD" text: no timezone shifting.
+types.setTypeParser(1082, (v) => v);
 
 let pool;
 

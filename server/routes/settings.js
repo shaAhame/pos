@@ -5,7 +5,7 @@ const { requireRole } = require("../middleware/auth");
 const { getSettings, clearSettingsCache } = require("../lib/settings");
 const { snake } = require("../lib/util");
 
-router.get("/", async (req, res) => res.json(await getSettings()));
+router.get("/", async (req, res) => res.json(await getSettings(req.biz)));
 
 const isValidTz = (tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } };
 
@@ -20,10 +20,12 @@ router.put(
   }).min(1)),
   async (req, res) => {
     const keys = Object.keys(req.body);
-    const sets = keys.map((k, i) => `${snake(k)} = $${i + 1}`);
-    await query(`update settings set ${sets.join(", ")}, updated_at = now() where id = 1`, keys.map((k) => req.body[k]));
-    clearSettingsCache();
-    res.json(await getSettings());
+    await query(
+      `update settings set ${keys.map((k, i) => `${snake(k)} = $${i + 2}`).join(", ")}, updated_at = now() where business_id = $1`,
+      [req.biz, ...keys.map((k) => req.body[k])]
+    );
+    clearSettingsCache(req.biz);
+    res.json(await getSettings(req.biz));
   }
 );
 

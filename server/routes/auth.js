@@ -2,14 +2,14 @@ const router = require("express").Router();
 const bcrypt = require("bcrypt");
 const rateLimit = require("express-rate-limit");
 const passwordComplexity = require("joi-password-complexity");
-const { query, tx } = require("../lib/db");
-const { Joi, validate, text } = require("../lib/validate");
+const { query } = require("../lib/db");
+const { Joi, validate } = require("../lib/validate");
 const { requireAuth, signToken } = require("../middleware/auth");
 const { fail } = require("../lib/errors");
+const { effectiveFeatures } = require("../lib/features");
 
 const SALT = () => Number(process.env.SALT) || 10;
-// Used when the email doesn't exist, so a login takes the same time either way.
-const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10);
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10); // same timing whether or not the email exists
 const strongPassword = passwordComplexity({ min: 8, max: 72, lowerCase: 1, upperCase: 1, numeric: 1, symbol: 0, requirementCount: 3 }).label("Password");
 
 const loginLimiter = rateLimit({
@@ -20,62 +20,45 @@ const loginLimiter = rateLimit({
   message: { message: "Too many login attempts. Wait 15 minutes and try again." },
 });
 
-const publicUser = (u) => ({ _id: u.id, firstName: u.first_name, lastName: u.last_name, email: u.email, role: u.role, locationId: u.location_id || null });
-
-// Is this a brand-new install with no accounts yet?
-router.get("/status", async (req, res) => {
-  const { rows } = await query("select exists(select 1 from users) as any");
-  res.json({ needsSetup: !rows[0].any });
+const meShape = (u, business) => ({
+  _id: u.id, firstName: u.firstName ?? u.first_name, lastName: u.lastName ?? u.last_name, email: u.email,
+  role: u.role, locationId: u.locationId ?? u.location_id ?? null, hasApprovalPin: !!u.hasApprovalPin,
+  business,
 });
 
-// First-time setup: create the owner account. Only works while there are no users.
-router.post(
-  "/setup",
-  loginLimiter,
-  validate(Joi.object({
-    firstName: text(60).required(), lastName: text(60).required(),
-    email: Joi.string().trim().email().max(200).required(), password: strongPassword.required(),
-    shopName: text(120).allow(""),
-  })),
-  async (req, res) => {
-    const hash = await bcrypt.hash(req.body.password, SALT());
-    const user = await tx(async (db) => {
-      await db.query("lock table users in exclusive mode");
-      const { rows } = await db.query("select exists(select 1 from users) as any");
-      if (rows[0].any) fail(409, "Setup is already done. Please log in.");
-      const { rows: created } = await db.query(
-        `insert into users (first_name, last_name, email, password, role) values ($1,$2,$3,$4,'owner') returning *`,
-        [req.body.firstName, req.body.lastName, req.body.email, hash]
-      );
-      if (req.body.shopName) await db.query("update settings set shop_name = $1, updated_at = now() where id = 1", [req.body.shopName]);
-      return created[0];
-    });
-    res.status(201).json({ token: signToken(user), user: publicUser(user) });
-  }
-);
+// Is this a brand-new platform with no MacQuad admin yet?
+router.get("/status", async (req, res) => {
+  const { rows } = await query("select exists(select 1 from platform_users) as admins");
+  res.json({ needsPlatformSetup: !rows[0].admins });
+});
 
-// Login
 router.post(
   "/login",
   loginLimiter,
   validate(Joi.object({ email: Joi.string().trim().email().required(), password: Joi.string().required() })),
   async (req, res) => {
-    const { rows } = await query("select * from users where lower(email) = lower($1)", [req.body.email]);
-    const user = rows[0];
-    // Always run bcrypt so response time doesn't reveal whether the email exists.
-    const ok = await bcrypt.compare(req.body.password, user ? user.password : DUMMY_HASH);
-    if (!user || !ok) fail(401, "Invalid email or password");
-    if (!user.active) fail(403, "Your account is disabled. Ask the owner.");
-    res.json({ token: signToken(user), user: publicUser(user) });
+    const { rows } = await query(
+      `select u.*, b.name as biz_name, b.type as biz_type, b.status as biz_status, b.features as biz_features
+         from users u join businesses b on b.id = u.business_id where lower(u.email) = lower($1)`,
+      [req.body.email]
+    );
+    const u = rows[0];
+    const ok = await bcrypt.compare(req.body.password, u ? u.password : DUMMY_HASH);
+    if (!u || !ok) fail(401, "Invalid email or password");
+    if (!u.active) fail(403, "Your account is disabled. Ask the owner.");
+    if (u.biz_status !== "active") fail(403, "This business account is suspended. Please contact your POS provider.", { code: "BUSINESS_SUSPENDED" });
+    res.json({
+      token: signToken(u),
+      user: meShape({ ...u, hasApprovalPin: !!u.approval_pin }, { _id: u.business_id, name: u.biz_name, type: u.biz_type, features: effectiveFeatures(u.biz_type, u.biz_features) }),
+    });
   }
 );
 
-// Current user
-router.get("/me", requireAuth, (req, res) => {
-  res.json({ _id: req.user.id, firstName: req.user.firstName, lastName: req.user.lastName, email: req.user.email, role: req.user.role, locationId: req.user.locationId || null });
+router.get("/me", requireAuth, async (req, res) => {
+  const { rows } = await query("select approval_pin is not null as has from users where id = $1", [req.user.id]);
+  res.json(meShape({ ...req.user, hasApprovalPin: rows[0].has }, req.business));
 });
 
-// Change own password
 router.post(
   "/password",
   requireAuth,
@@ -88,4 +71,18 @@ router.post(
   }
 );
 
-module.exports = { router, strongPassword, SALT };
+// Managers and owners set a short PIN used to approve big discounts at a cashier's till.
+router.post(
+  "/approval-pin",
+  requireAuth,
+  validate(Joi.object({ currentPassword: Joi.string().required(), pin: Joi.string().pattern(/^\d{4,8}$/).message("PIN must be 4 to 8 digits").required() })),
+  async (req, res) => {
+    if (req.user.role === "cashier") fail(403, "Only managers and owners approve discounts");
+    const { rows } = await query("select password from users where id = $1", [req.user.id]);
+    if (!(await bcrypt.compare(req.body.currentPassword, rows[0].password))) fail(400, "Password is wrong");
+    await query("update users set approval_pin = $2 where id = $1", [req.user.id, await bcrypt.hash(req.body.pin, SALT())]);
+    res.json({ message: "Approval PIN saved" });
+  }
+);
+
+module.exports = { router, strongPassword, SALT, loginLimiter };
