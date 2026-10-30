@@ -127,7 +127,7 @@ function NewTransfer({ onClose, onDone }) {
             <div className="panel" style={{ marginTop: 4 }}>
               <table className="data"><tbody>
                 {matches.map((p) => (
-                  <tr key={p._id} className="clickable" onClick={() => add(p)}><td>{p.name}</td><td className="num muted">{p.quantity} at this branch</td></tr>
+                  <tr key={p._id} className="clickable" onClick={() => add(p)}><td>{p.displayName || p.name}</td><td className="num muted">{p.quantity} at this branch</td></tr>
                 ))}
               </tbody></table>
             </div>
@@ -187,7 +187,7 @@ function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
   };
   return (
     <Modal title="Choose units to send" onClose={onClose} labelledBy="uc-title"
-      footer={<div className="actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onDone(chosen)}>Use {chosen.length} units</button></div>}>
+      footer={<div className="actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onDone(chosen)}>Use {chosen.length} {chosen.length === 1 ? "unit" : "units"}</button></div>}>
       <div className="stack">
         <div className="field"><label htmlFor="uc-scan">Scan a unit</label><input id="uc-scan" value={scan} onChange={(e) => setScan(e.target.value)} onKeyDown={onScan} autoFocus autoComplete="off" /></div>
         {!data ? <Loading /> : !data.length ? <p className="muted">No units in stock at this branch.</p> : (

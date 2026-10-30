@@ -6,6 +6,7 @@ import { computeTotals, fmt, lineTotal, money, quickCash, round2 } from "../lib/
 import { load, save } from "../lib/storage";
 import { enqueue } from "../lib/offline";
 import { uuid } from "../lib/uuid";
+import { nameOf, searchProducts, resolveScan } from "../lib/search";
 import { useDebounced } from "../lib/hooks";
 import Modal from "../components/Modal";
 import { Receipt, PrintReceipt, printNow } from "../components/Receipt";
@@ -13,7 +14,6 @@ import { OpenShiftForm } from "./Shifts";
 
 const CATALOG_KEY = "pos.catalog";
 const CART_KEY = "pos.cart";
-const nameOf = (p) => p.displayName || (p.variant ? `${p.name} ${p.variant}` : p.name);
 
 export default function Till() {
   const { user, settings, shift, online, setOnline, refreshShift, can, has, multiBranch, location, locationId } = useSession();
@@ -56,12 +56,7 @@ export default function Till() {
   const byId = useMemo(() => new Map(catalog.map((p) => [p._id, p])), [catalog]);
   const categories = useMemo(() => [...new Set(catalog.map((p) => p.category))].sort(), [catalog]);
   const q = useDebounced(search.trim().toLowerCase(), 120);
-  const results = useMemo(() => {
-    let list = catalog;
-    if (category) list = list.filter((p) => p.category === category);
-    if (q) list = list.filter((p) => nameOf(p).toLowerCase().includes(q) || (p.model || "").toLowerCase().includes(q) || (p.barcode || "").toLowerCase().startsWith(q));
-    return list.slice(0, 60);
-  }, [catalog, category, q]);
+  const results = useMemo(() => searchProducts(catalog, { category, term: q }).slice(0, 60), [catalog, category, q]);
 
   const inCart = (id) => cart.find((l) => l.product === id)?.quantity || 0;
   const tracked = (p) => serialsOn && p.trackSerials;
@@ -112,9 +107,10 @@ export default function Till() {
     e.preventDefault();
     const code = search.trim();
     if (!code) return;
-    const exact = catalog.find((p) => p.barcode && p.barcode === code);
-    if (exact) { add(exact); setSearch(""); return; }
-    if (results.length === 1) { add(results[0]); setSearch(""); return; }
+    // Decided from what is typed right now, never from the list on screen, which lags
+    // behind a barcode scanner by a fraction of a second.
+    const hit = resolveScan(catalog, { category, term: code });
+    if (hit.action === "add") { add(hit.product); setSearch(""); return; }
     if (online && serialsOn) {
       // maybe it's an IMEI / serial number
       try {
@@ -126,7 +122,7 @@ export default function Till() {
         add(byId.get(data._id) || data); setSearch(""); return;
       } catch { /* fall through */ }
     }
-    if (!results.length) toast.error(`Nothing matches "${code}"`);
+    if (!hit.matches) toast.error(`Nothing matches "${code}"`);
   };
 
   const totals = computeTotals(cart, Number(discount) || 0, Number(taxRate) || 0);
@@ -447,7 +443,7 @@ function PayModal({ total, customer, catalog, onClose, onComplete }) {
           <>
             <div className="field">
               <label htmlFor="given">Cash received</label>
-              <input id="given" className="tender-amount" type="number" inputMode="decimal" min="0" step="0.01" value={cashGiven} onChange={(e) => setCashGiven(e.target.value)} placeholder={fmt(cashPart)} autoFocus />
+              <input id="given" className="tender-amount" type="number" inputMode="decimal" min="0" step="0.01" value={cashGiven} onChange={(e) => setCashGiven(e.target.value)} placeholder={fmt(cashPart)} autoFocus={!split && !instOn} />
             </div>
             <div className="quick">{quickCash(cashPart).map((v) => <button type="button" key={v} className="btn" onClick={() => setCashGiven(String(v))}>{fmt(v)}</button>)}</div>
             {change !== null && (

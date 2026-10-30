@@ -182,7 +182,7 @@ export default function Reports() {
               {!low.data ? <Loading /> : !low.data.length ? <Empty title="Nothing is running low" /> : (
                 <table className="data">
                   <thead><tr><th>Product</th>{multiBranch && <th>Branch</th>}<th className="num">Left</th><th className="num">Warn at</th></tr></thead>
-                  <tbody>{low.data.slice(0, 15).map((p) => <tr key={p._id + p.locationId}><td>{p.name}</td>{multiBranch && <td>{p.locationName}</td>}<td className="num">{p.quantity <= 0 ? <span className="badge red">0</span> : <span className="badge saffron">{p.quantity}</span>}</td><td className="num muted">{p.lowStockThreshold}</td></tr>)}</tbody>
+                  <tbody>{low.data.slice(0, 15).map((p) => <tr key={p._id + p.locationId}><td>{p.variant ? `${p.name} ${p.variant}` : p.name}</td>{multiBranch && <td>{p.locationName}</td>}<td className="num">{p.quantity <= 0 ? <span className="badge red">0</span> : <span className="badge saffron">{p.quantity}</span>}</td><td className="num muted">{p.lowStockThreshold}</td></tr>)}</tbody>
                 </table>
               )}
             </div>

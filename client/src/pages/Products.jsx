@@ -143,7 +143,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     } catch (err) { toast.error(errorMessage(err)); }
   };
   return (
-    <Modal title={isNew ? "Add product" : `Edit ${product.name}`} onClose={onClose} wide>
+    <Modal title={isNew ? "Add product" : `Edit ${product.displayName || product.name}`} onClose={onClose} wide>
       <form className="stack" onSubmit={save}>
         <div className="form-grid">
           <Input label="Name" form={f} name="name" required className="span-all" />
@@ -222,12 +222,12 @@ function StockForm({ product, onClose, onSaved }) {
         else { base.addSerials = split(snIn); base.removeSerials = split(snOut); }
       }
       await api.post(`/products/${product._id}/stock`, base);
-      toast.success(`Stock updated: ${product.name} now ${after}`);
+      toast.success(`Stock updated: ${product.displayName || product.name} now ${after}`);
       onSaved();
     } catch (err) { toast.error(errorMessage(err)); } finally { setBusy(false); }
   };
   return (
-    <Modal title={`Stock: ${product.name}`} onClose={onClose}>
+    <Modal title={`Stock: ${product.displayName || product.name}`} onClose={onClose}>
       <form className="stack" onSubmit={save}>
         <div className="seg" role="group" aria-label="Kind of stock change">
           <button type="button" aria-pressed={type === "receive"} onClick={() => setType("receive")}>Received delivery</button>
@@ -292,7 +292,7 @@ function StockHistory({ product, onClose }) {
   const { settings, multiBranch } = useSession();
   const { data, loading } = useApi(`/products/${product._id}/movements`);
   return (
-    <Modal title={`History: ${product.name}`} onClose={onClose} wide>
+    <Modal title={`History: ${product.displayName || product.name}`} onClose={onClose} wide>
       {loading ? <Loading /> : !data?.length ? <Empty title="No stock changes yet" /> : (
         <div className="table-wrap" style={{ maxHeight: "60vh", overflowY: "auto" }}>
           <table className="data">

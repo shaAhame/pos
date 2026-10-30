@@ -1,7 +1,7 @@
 // Installment plans (easy payment): schedule, collections, overdue.
 const router = require("express").Router();
 const { query, tx } = require("../lib/db");
-const { toApi, round2 } = require("../lib/util");
+const { toApi, round2, money2 } = require("../lib/util");
 const { Joi, validate, id, money, text } = require("../lib/validate");
 const { fail } = require("../lib/errors");
 const { canAccessLocation } = require("../lib/location");
@@ -93,7 +93,7 @@ router.post(
       if (b.method === "Cash" && !shifts[0]) fail(409, "Open a shift to take cash (it goes into your drawer)", { code: "SHIFT_REQUIRED" });
       const { rows: dues } = await db.query("select * from installment_dues where plan_id = $1 and paid < amount order by seq for update", [plan.id]);
       const owed = round2(dues.reduce((t, d) => t + (d.amount - d.paid), 0));
-      if (b.amount > owed + 0.005) fail(400, `Only ${owed} is still owed on this plan`);
+      if (b.amount > owed + 0.005) fail(400, `Only ${money2(owed)} is still owed on this plan`);
       let left = b.amount;
       for (const d of dues) {
         if (left <= 0.005) break;
@@ -107,7 +107,7 @@ router.post(
       if (remaining <= 0.005) await db.query("update installment_plans set status = 'completed' where id = $1", [plan.id]);
       return { remaining, completed: remaining <= 0.005, planNumber: plan.plan_number };
     });
-    res.json({ message: result.completed ? `${result.planNumber} fully paid` : `Payment recorded. ${result.remaining} still owed.`, ...result });
+    res.json({ message: result.completed ? `${result.planNumber} fully paid` : `Payment recorded. ${money2(result.remaining)} still owed.`, ...result });
   }
 );
 

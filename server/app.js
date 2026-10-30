@@ -7,6 +7,7 @@ const { requireAuth, requireRole, requireFeature } = require("./middleware/auth"
 const { withLocation } = require("./lib/location");
 const { errorHandler } = require("./lib/errors");
 const { query } = require("./lib/db");
+const { platformEnabled } = require("./lib/setup");
 
 const app = express();
 app.set("trust proxy", Number(process.env.TRUST_PROXY) || 0);
@@ -33,7 +34,14 @@ const either = (...names) => (req, res, next) =>
   names.some((n) => req.business.features[n]) ? next() : res.status(403).json({ message: "This feature isn't switched on for your business", code: "FEATURE_OFF" });
 
 app.use("/api/auth", authRouter);
-app.use("/api/platform", require("./routes/platform"));   // MacQuad admins (separate login)
+// The client-management portal. Off for a single-shop install (SHOP_NAME set), where there
+// are no other businesses to manage and the owner runs everything from the shop screens.
+if (platformEnabled()) {
+  app.use("/api/platform", require("./routes/platform"));   // MacQuad admins (separate login)
+} else {
+  app.use("/api/platform", (req, res) =>
+    res.status(404).json({ message: "This POS runs a single shop; there is no client portal here." }));
+}
 
 // Everything below needs a logged-in shop user of an active business (and knows the branch).
 app.use("/api", requireAuth, withLocation);

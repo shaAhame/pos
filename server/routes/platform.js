@@ -160,7 +160,7 @@ router.post(
 
 // Other MacQuad admins
 router.get("/admins", async (req, res) => {
-  const { rows } = await query("select id as _id, name, email, active, created_at from platform_users order by created_at");
+  const { rows } = await query("select id as _id, name, email, active from platform_users order by created_at");
   res.json(rows);
 });
 router.post(

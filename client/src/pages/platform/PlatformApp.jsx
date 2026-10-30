@@ -45,10 +45,16 @@ export default function PlatformApp() {
 
 function PlatformLogin({ onSignedIn }) {
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [enabled, setEnabled] = useState(true);
   const f = useForm({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.get("/auth/status").then((r) => setNeedsSetup(r.data.needsPlatformSetup)).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get("/auth/status").then((r) => {
+      setNeedsSetup(r.data.needsPlatformSetup);
+      if (r.data.platform === false) setEnabled(false);
+    }).catch(() => {});
+  }, []);
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setError("");
@@ -57,6 +63,22 @@ function PlatformLogin({ onSignedIn }) {
       onSignedIn(data.token, data.admin);
     } catch (err) { setError(errorMessage(err, "Couldn't log in")); } finally { setBusy(false); }
   };
+  if (!enabled) {
+    return (
+      <div className="auth">
+        <div className="card stack">
+          <div className="brand"><img src="/favicon.svg" alt="" /><strong>POS</strong></div>
+          <div>
+            <h1>One shop, no portal</h1>
+            <p className="muted">This POS runs a single business, so there is nothing to manage here.
+              Everything - branches, staff, products and settings - is inside the shop itself.</p>
+          </div>
+          <a href="/login" className="btn primary big" style={{ textAlign: "center" }}>Go to the shop login</a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth">
       <form className="card stack" onSubmit={submit}>

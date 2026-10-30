@@ -6,6 +6,7 @@ const { query } = require("../lib/db");
 const { Joi, validate } = require("../lib/validate");
 const { requireAuth, signToken } = require("../middleware/auth");
 const { fail } = require("../lib/errors");
+const { platformEnabled } = require("../lib/setup");
 const { effectiveFeatures } = require("../lib/features");
 
 const SALT = () => Number(process.env.SALT) || 10;
@@ -28,8 +29,9 @@ const meShape = (u, business) => ({
 
 // Is this a brand-new platform with no MacQuad admin yet?
 router.get("/status", async (req, res) => {
+  if (!platformEnabled()) return res.json({ needsPlatformSetup: false, platform: false });
   const { rows } = await query("select exists(select 1 from platform_users) as admins");
-  res.json({ needsPlatformSetup: !rows[0].admins });
+  res.json({ needsPlatformSetup: !rows[0].admins, platform: true });
 });
 
 router.post(

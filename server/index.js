@@ -1,14 +1,17 @@
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const { migrate, getPool, close } = require("./lib/db");
+const { autoSetup } = require("./lib/setup");
 
 const required = ["DATABASE_URL", "JWTPRIVATEKEY"];
 const missing = required.filter((k) => !process.env[k]);
 if (missing.length) {
-  console.error(`Missing settings in server/.env: ${missing.join(", ")}. Copy .env.example to .env and fill it in.`);
+  console.error(`Missing settings: ${missing.join(", ")}.` +
+    ` On your own computer, copy server/.env.example to server/.env and fill it in.` +
+    ` On a host like Railway, set them as environment variables for the service.`);
   process.exit(1);
 }
 if (process.env.JWTPRIVATEKEY.length < 32 || process.env.JWTPRIVATEKEY === "change-me") {
-  console.error("JWTPRIVATEKEY in server/.env must be a long random value (at least 32 characters).");
+  console.error("JWTPRIVATEKEY must be a long random value (at least 32 characters).");
   process.exit(1);
 }
 
@@ -21,6 +24,20 @@ const app = require("./app");
     console.log("Connected to database");
   } catch (err) {
     console.error("Database connection error:", err.message);
+    process.exit(1);
+  }
+
+  // Single-shop mode (SHOP_NAME set): create the shop on the very first start.
+  try {
+    const result = await autoSetup();
+    if (result?.created) {
+      console.log(`Created "${result.name}" (${result.type}) with branches: ${result.branches.join(", ")}`);
+      console.log(`Owner login: ${result.email} - use the password you set in OWNER_PASSWORD`);
+    } else if (result) {
+      console.log(`Serving "${result.name}" (already set up)`);
+    }
+  } catch (err) {
+    console.error("Shop setup failed:", err.message);
     process.exit(1);
   }
   const port = Number(process.env.PORT) || 5000;

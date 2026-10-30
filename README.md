@@ -55,6 +55,15 @@ CI runs both on every push (`.github/workflows/test.yml`).
   and claims all move units, never just counts.
 - **Migrations** are numbered SQL files in `server/migrations`, applied once each at start-up under an advisory lock.
 
+## Running it for one shop of your own
+Set `SHOP_NAME` (plus `BRANCHES`, `OWNER_EMAIL`, `OWNER_PASSWORD`) and the server creates that
+business, its branches and the owner login the first time it starts, then leaves them alone.
+The client portal is switched off in this mode. See [RAILWAY-SETUP.md](RAILWAY-SETUP.md).
+
+## Forgotten password
+`node server/reset-password.js` lists every login; `node server/reset-password.js <email> <new password>`
+sets a new one. Works for platform admins and shop staff.
+
 ## Deploying elsewhere
 `docker build -t shop-pos . && docker run -p 5000:5000 --env-file server/.env shop-pos`
 Behind a hosting proxy (Render, Railway, etc.), also set `TRUST_PROXY=1`.

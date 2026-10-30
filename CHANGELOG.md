@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1.0
+Run the POS for a single business of your own, separate from the client platform: set the shop
+name, branches and owner login as environment settings and the shop is created on first start
+(a restart never changes live data). The client portal is switched off in this mode. Added
+Railway deployment files and a step-by-step guide, and a `reset-password` tool for a forgotten
+login. Fixes: the till could add the wrong product when a barcode scanner pressed Enter faster
+than the screen updated; unit lists returned a wrongly named id field; the database connection
+now picks SSL correctly for Railway and other private-network databases.
+
 ## 3.0.0
 One system for many client businesses, run by MacQuad from the new platform page (/platform): add clients
 (grocery, electronics or general), switch features on per client, suspend/reactivate, reset owner passwords. Each
