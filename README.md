@@ -1,11 +1,21 @@
-# Shop POS
+# Idealz Lanka POS
 
-Multi-business point of sale run by one provider (MacQuad): each client business, whether grocery, electronics or general,
-gets its own isolated shop with features switched on per client. Barcode till with cash change, shifts and cash-up, returns and voids,
-stock receiving and counts with full history, staff roles, reports with CSV export, and offline selling
-that syncs when the connection returns.
+Point of sale for our own mobile phone shops and their branches, hosted on Railway.
 
-- **Shop owners:** start with [SETUP.md](SETUP.md), then [USER-GUIDE.md](USER-GUIDE.md).
+Every unit tracked by IMEI with its warranty, repairs and job cards, installments, advance
+orders with deposits, trade-ins, supplier warranty claims, split payments, stock transfers
+between branches, shifts with cash-up, returns and voids, reports, and offline selling that
+syncs when the connection returns.
+
+**This install runs one business: ours.** Set `SHOP_NAME` and the shop, its branches and the
+owner login are created the first time it starts; the client portal is switched off. The same
+code also runs the MecQuad client platform, which lives in its own repository and its own
+database - never point both at one database.
+
+Start with **[RAILWAY-SETUP.md](RAILWAY-SETUP.md)**.
+
+- **Staff:** [USER-GUIDE.md](USER-GUIDE.md) is the day-to-day guide.
+- **Running it on your own computer instead:** [SETUP.md](SETUP.md).
 - **Developers:** read on.
 
 ## Stack
