@@ -1,4 +1,8 @@
-node_modules/
+# Installed packages. No trailing slash, so a symlinked node_modules is ignored too.
+node_modules
+# Secrets: database URL, signing key, passwords. Never commit this.
 .env
-client/dist/
+# Built files, rebuilt on every deploy.
+dist
+client/dist
 *.log
