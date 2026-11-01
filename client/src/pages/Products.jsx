@@ -112,7 +112,9 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   const [openingAt, setOpeningAt] = useState(locationId || activeLocations[0]?._id || "");
   const [trackSerials, setTrackSerials] = useState(!!product.trackSerials);
   const [openingSerials, setOpeningSerials] = useState("");
+  const [openingSupplier, setOpeningSupplier] = useState("");
   const serialList = openingSerials.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  const suppliers = useApi(isNew ? "/suppliers" : null, { limit: 500 });
   const f = useForm({
     name: product.name || "", category: product.category || "", price: product.price ?? "", costPrice: product.costPrice ?? "",
     barcode: product.barcode || "", description: product.description || "", lowStockThreshold: product.lowStockThreshold ?? 5,
@@ -129,6 +131,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     if (isNew && trackSerials) { body.serials = serialList; body.quantity = serialList.length; }
     if (!isNew) delete body.quantity; else if (body.quantity === null) body.quantity = 0;
     if (isNew && multiBranch && body.quantity > 0) body.locationId = openingAt;
+    if (isNew && body.quantity > 0 && openingSupplier) body.supplierId = openingSupplier;
     try {
       if (isNew) await api.post("/products", body); else await api.put(`/products/${product._id}`, body);
       toast.success(isNew ? "Product added" : "Product saved");
@@ -177,6 +180,15 @@ function ProductForm({ product, categories, onClose, onSaved }) {
                 {activeLocations.map((l) => <option key={l._id} value={l._id}>{l.name}</option>)}
               </select>
               <span className="hint">Other branches start at 0. Send stock to them with a transfer.</span>
+            </div>
+          )}
+          {isNew && (
+            <div className="field"><label htmlFor="osup">Opening stock came from (optional)</label>
+              <select id="osup" value={openingSupplier} onChange={(e) => setOpeningSupplier(e.target.value)}>
+                <option value="">Not recorded</option>
+                {(suppliers.data?.suppliers || []).map((x) => <option key={x._id} value={x._id}>{x.company} ({x.name})</option>)}
+              </select>
+              <span className="hint">Kept with these units, so you know who to claim from.</span>
             </div>
           )}
           <Input label="Warn when stock reaches" form={f} name="lowStockThreshold" type="number" min="0" step="1" />

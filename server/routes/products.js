@@ -147,11 +147,16 @@ router.post(
     quantity: Joi.number().integer().min(0).max(10000000).default(0),
     serials: serialList.default([]),
     locationId: id,
+    supplierId: id.allow(null, "").empty(["", null]).default(null),   // who the opening stock came from
   })),
   async (req, res) => {
     const b = req.body;
     const f = req.business.features;
     if (b.trackSerials && !f.serials) fail(400, "Serial numbers aren't switched on for this business");
+    if (b.supplierId) {
+      const { rows } = await query("select 1 from suppliers where id = $1 and business_id = $2", [b.supplierId, req.biz]);
+      if (!rows[0]) fail(400, "Supplier not found");
+    }
     if (b.warrantyMonths && !f.warranty) b.warrantyMonths = 0;
     if ((b.model || b.variant) && !f.variants) { b.model = ""; b.variant = ""; }
     if (b.trackSerials && b.serials.length !== b.quantity) fail(400, `Enter one serial number per unit (${b.serials.length} entered, opening stock ${b.quantity})`);
@@ -171,8 +176,8 @@ router.post(
         [rows[0].id, req.biz]
       );
       if (b.quantity > 0) {
-        await moveStock(db, { biz: req.biz, productId: rows[0].id, locationId: openingLoc.id, change: b.quantity, reason: "initial", unitCost: b.costPrice, note: "Opening stock", userId: req.user.id });
-        if (b.trackSerials) await serialsLib.addUnits(db, req.biz, { productId: rows[0].id, locationId: openingLoc.id, serials: b.serials, cost: b.costPrice, event: "opening stock", userId: req.user.id });
+        await moveStock(db, { biz: req.biz, productId: rows[0].id, locationId: openingLoc.id, change: b.quantity, reason: "initial", unitCost: b.costPrice, supplierId: b.supplierId, note: "Opening stock", userId: req.user.id });
+        if (b.trackSerials) await serialsLib.addUnits(db, req.biz, { productId: rows[0].id, locationId: openingLoc.id, serials: b.serials, cost: b.costPrice, supplierId: b.supplierId, event: "opening stock", userId: req.user.id });
       }
       return rows[0];
     });
@@ -291,7 +296,7 @@ router.get(
   async (req, res) => {
     const loc = stockLocation(req, req.validQuery.locationId);
     const { rows } = await query(
-      `select m.*, u.first_name || ' ' || u.last_name as user_name, s.name as supplier_name, l.name as location_name,
+      `select m.*, u.first_name || ' ' || u.last_name as user_name, coalesce(nullif(s.company, ''), s.name) as supplier_name, l.name as location_name,
               sa.invoice_number, r.return_number, t.transfer_number
          from stock_movements m
          left join users u on u.id = m.user_id

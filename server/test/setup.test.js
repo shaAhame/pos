@@ -2,7 +2,7 @@
 // settings on first start, and never touched again.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { app, resetDb, as, request, PASSWORD } = require("./helpers");
+const { app, db, resetDb, as, request, PASSWORD } = require("./helpers");
 const { autoSetup, readConfig, platformEnabled } = require("../lib/setup");
 
 const ENV = {
@@ -110,4 +110,45 @@ test("picks SSL correctly for where the database lives", () => {
   // Explicit override either way.
   assert.equal(sslFor("postgresql://u:p@db.example.com/x", "off"), false);
   assert.ok(sslFor("postgresql://u:p@localhost/x", "require"));
+});
+
+test("the supplier of opening stock is kept with the units", async () => {
+  await resetDb();
+  await autoSetup({ ...ENV, BRANCHES: "Prime,Marino", WAREHOUSES: "" });
+  const login = await request(app).post("/api/auth/login").send({ email: "owner@idealz.lk", password: PASSWORD });
+  const owner = as(login.body.token);
+  const prime = (await owner.get("/api/locations")).body.find((l) => l.name === "Prime");
+
+  const sup = await owner.post("/api/suppliers").send({
+    name: "Ruwan", company: "Generation Next Communication", contactNumber: "0112998877",
+    email: "ruwan@gennext.lk", address: "Colombo",
+  });
+  assert.equal(sup.status, 201, JSON.stringify(sup.body));
+
+  // A phone received straight into the shop, with its IMEIs and the supplier it came from.
+  const made = await owner.post("/api/products").set("X-Location-Id", prime._id).send({
+    name: "MI Redmi Note 17", category: "Phones", variant: "6GB/256GB Black", price: 95000, costPrice: 80893,
+    warrantyMonths: 12, trackSerials: true, quantity: 2,
+    serials: ["866937080767086", "866937080766468"], supplierId: sup.body._id,
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+
+  // Each unit remembers the supplier, which is what a warranty claim needs.
+  const { rows } = await db.query(
+    `select s.serial, su.company from serials s join suppliers su on su.id = s.supplier_id order by s.serial`);
+  assert.equal(rows.length, 2, "both units carry a supplier");
+  assert.equal(rows[0].company, "Generation Next Communication");
+
+  // And the stock movement shows it too, so the delivery is traceable.
+  const moves = await owner.get(`/api/products/${made.body._id}/movements`).set("X-Location-Id", prime._id);
+  const opening = (moves.body.movements || moves.body).find((m) => m.reason === "initial");
+  assert.equal(opening.supplierName, "Generation Next Communication");
+
+  // An unknown supplier is refused rather than silently ignored.
+  const bad = await owner.post("/api/products").set("X-Location-Id", prime._id).send({
+    name: "Cable", category: "Accessories", price: 1500, quantity: 1,
+    supplierId: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.message, /Supplier not found/);
 });

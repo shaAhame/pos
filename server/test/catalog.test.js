@@ -82,7 +82,7 @@ test("stock: receive from supplier updates cost and history", async () => {
   assert.equal(res.body.costPrice, 310);
   const mv = (await manager.get(`/api/products/${p._id}/movements`)).body;
   assert.equal(mv[0].reason, "receive");
-  assert.equal(mv[0].supplierName, "Sun");
+  assert.equal(mv[0].supplierName, "Sun Ltd", "history names the company, which is what the owner recognises");
   assert.equal(mv[0].quantityAfter, 26);
 });
 
