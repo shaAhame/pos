@@ -137,12 +137,12 @@ export default function Reports() {
               <div className="modal-head"><h3>Branches compared</h3></div>
               <div className="table-wrap">
                 <table className="data">
-                  <thead><tr><th>Branch</th><th className="num">Sales</th><th className="num">Gross ({cur})</th><th className="num">Refunds</th><th className="num">Net ({cur})</th><th className="num">Stock value at cost</th></tr></thead>
+                  <thead><tr><th>Branch</th><th className="num">Sales</th><th className="num col-wide">Gross ({cur})</th><th className="num col-wide">Refunds</th><th className="num">Net ({cur})</th><th className="num col-wide">Stock value at cost</th></tr></thead>
                   <tbody>{byLoc.data.map((b) => (
                     <tr key={b._id}>
                       <td><strong>{b.name}</strong>{b.type === "warehouse" && <span className="muted"> (warehouse)</span>}</td>
-                      <td className="num">{b.salesCount}</td><td className="num">{fmt(b.grossSales)}</td><td className="num">{fmt(b.refunds)}</td>
-                      <td className="num"><strong>{fmt(b.netSales)}</strong></td><td className="num muted">{fmt(b.stockValueAtCost)}</td>
+                      <td className="num">{b.salesCount}</td><td className="num col-wide">{fmt(b.grossSales)}</td><td className="num col-wide">{fmt(b.refunds)}</td>
+                      <td className="num"><strong>{fmt(b.netSales)}</strong></td><td className="num muted col-wide">{fmt(b.stockValueAtCost)}</td>
                     </tr>
                   ))}</tbody>
                 </table>

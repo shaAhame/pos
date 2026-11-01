@@ -88,19 +88,19 @@ export default function Sales() {
           <>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Items</th><th>Payment</th><th>Status</th>{branchCol && <th>Branch</th>}{can("manager") && <th>Cashier</th>}<th className="num">Total</th></tr></thead>
+                <thead><tr><th>Invoice</th><th>Date</th><th className="col-wide">Customer</th><th className="col-wide">Items</th><th className="col-wide">Payment</th><th>Status</th>{branchCol && <th>Branch</th>}{can("manager") && <th className="col-wide">Cashier</th>}<th className="num">Total</th></tr></thead>
                 <tbody>
                   {list.data.sales.map((s) => (
                     <tr key={s._id} className={`clickable${s.paymentStatus === "Voided" ? " voided" : ""}`} tabIndex={0}
                       onClick={() => nav(`/sales/${s._id}${shiftId ? `?shiftId=${shiftId}` : ""}`)} onKeyDown={(e) => e.key === "Enter" && nav(`/sales/${s._id}`)}>
                       <td><strong>{s.invoiceNumber}</strong>{s.offline && <> <span className={`badge ${s.offlineNote ? "saffron" : ""}`} title={s.offlineNote || "Recorded offline"}>Offline{s.offlineNote ? ": check" : ""}</span></>}</td>
                       <td>{dateTime(s.date, tz)}</td>
-                      <td>{s.customerName}</td>
-                      <td className="small">{s.items.slice(0, 3).map((i) => `${i.name} ×${i.quantity}`).join(", ")}{s.items.length > 3 ? ` +${s.items.length - 3} more` : ""}</td>
-                      <td>{s.paymentMethod}</td>
+                      <td className="col-wide">{s.customerName}</td>
+                      <td className="small col-wide">{s.items.slice(0, 3).map((i) => `${i.name} ×${i.quantity}`).join(", ")}{s.items.length > 3 ? ` +${s.items.length - 3} more` : ""}</td>
+                      <td className="col-wide">{s.paymentMethod}</td>
                       <td>{statusBadge(s)}</td>
                       {branchCol && <td>{s.location?.name}</td>}
-                      {can("manager") && <td>{fullName(s.cashier)}</td>}
+                      {can("manager") && <td className="col-wide">{fullName(s.cashier)}</td>}
                       <td className="num"><strong>{fmt(s.totalAmount)}</strong></td>
                     </tr>
                   ))}

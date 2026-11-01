@@ -63,22 +63,23 @@ export default function Products() {
           <>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>Product</th><th>Category</th><th>Barcode</th><th className="num">Cost</th><th className="num">Price ({settings.currency})</th><th className="num">{multiBranch ? (location ? `In stock (${location.name})` : "In stock (all)") : "In stock"}</th><th></th></tr></thead>
+                <thead><tr><th>Product</th><th className="col-wide">Category</th><th className="col-xwide">Barcode</th><th className="num col-xwide">Cost</th><th className="num col-wide">Price ({settings.currency})</th><th className="num">{multiBranch ? (location ? `In stock (${location.name})` : "In stock (all)") : "In stock"}</th><th></th></tr></thead>
                 <tbody>
                   {list.data.products.map((p) => (
                     <tr key={p._id} className={p.active ? "" : "voided"}>
                       <td><strong>{p.displayName || p.name}</strong>{!p.active && <> <span className="badge">Archived</span></>}
                         {p.trackSerials && <> <span className="badge" title="Each unit has a serial / IMEI">S/N</span></>}
                         {p.warrantyMonths > 0 && <span className="small muted"> {p.warrantyMonths}-month warranty</span>}
-                        {p.description && <div className="small muted">{p.description}</div>}</td>
-                      <td>{p.category}</td>
-                      <td className="small">{p.barcode || <span className="muted">None</span>}</td>
-                      <td className="num muted">{p.costPrice != null ? fmt(p.costPrice) : ""}</td>
-                      <td className="num"><strong>{fmt(p.price)}</strong></td>
+                        {p.description && <div className="small muted">{p.description}</div>}
+                        <div className="small price-sm">{fmt(p.price)}</div></td>
+                      <td className="col-wide">{p.category}</td>
+                      <td className="small col-xwide">{p.barcode || <span className="muted">None</span>}</td>
+                      <td className="num muted col-xwide">{p.costPrice != null ? fmt(p.costPrice) : ""}</td>
+                      <td className="num col-wide"><strong>{fmt(p.price)}</strong></td>
                       <td className="num">
                         {p.quantity <= 0 ? <span className="badge red">0</span> : p.quantity <= p.lowStockThreshold && !showByBranch ? <span className="badge saffron">{p.quantity}</span> : p.quantity}
                         {showByBranch && p.stockByLocation && (
-                          <div className="small muted" style={{ whiteSpace: "normal" }}>
+                          <div className="small muted stock-by-branch" style={{ whiteSpace: "normal" }}>
                             {p.stockByLocation.map((b) => <span key={b.locationId} style={{ display: "inline-block", marginLeft: 6 }} className={b.quantity <= p.lowStockThreshold && b.type === "store" ? "danger-text" : ""}>{b.name} {b.quantity}</span>)}
                           </div>
                         )}

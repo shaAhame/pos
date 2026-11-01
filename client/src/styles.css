@@ -300,6 +300,8 @@ table.data td.actions-cell { text-align: right; white-space: nowrap; }
 .feature-grid fieldset { margin: 0; }
 .feature-grid legend { padding: 0 4px; }
 
+.price-sm { display: none; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 1100px) {
   .till { grid-template-columns: 1fr; }
@@ -314,4 +316,58 @@ table.data td.actions-cell { text-align: right; white-space: nowrap; }
   .main { padding: 16px; }
   .topbar .hide-sm { display: none; }
   .quick { grid-template-columns: repeat(2, 1fr); }
+
+  /* Nothing may make the page wider than the phone: a sideways-scrolling till
+     is unusable with one hand at a counter. Flex and grid children default to
+     min-width:auto, which is what pushed the top bar past the screen edge. */
+  .shell, .main, .topbar, .panel, .page-head, .toolbar { min-width: 0; }
+  .main { overflow-x: clip; }
+  .topbar { gap: 8px; padding: 0 10px; }
+  .topbar > * { min-width: 0; flex-shrink: 1; }
+  .topbar .shop { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--step-0); }
+  .branch-pick { max-width: 42vw; }
+  .status-pill .pill-text { display: none; }          /* the dot alone says it */
+  .status-pill { padding: 6px; }
+
+  /* A wide table scrolls inside its own panel instead of dragging the page. */
+  .panel > .data, .table-wrap > .data { display: block; overflow-x: auto; }
+
+  /* A tablet loses only the least-used columns; a phone loses more (below). */
+  .col-xwide { display: none; }
+
+  /* Typing on a phone: iOS zooms into any field under 16px and never zooms back. */
+  input, select, textarea { font-size: 16px; }
+
+  /* Room for a thumb. 44px is the smallest reliable touch target. */
+  .btn { min-height: 44px; }
+  .btn.small { min-height: 40px; }
+  .menu-toggle, .topbar .btn.small { min-height: 40px; }
+  .branch-pick { min-height: 40px; }
+  .sidebar a { padding: 12px; }
+  .chip { min-height: 40px; }
+  .check input[type=checkbox] { width: 22px; height: 22px; }
+
+  /* One product per row reads better than two squeezed ones. */
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .form-grid { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Phones: keep only what the floor staff need in the row, and put the
+   row's buttons where a thumb can reach them. Nothing is lost - it is all
+   on the record you open. */
+@media (max-width: 640px) {
+  .col-wide { display: none; }
+  .actions-cell { white-space: normal; }
+  .actions-cell .btn { display: block; width: 100%; margin: 0 0 4px; }
+  .actions-cell .btn:last-child { margin-bottom: 0; }
+  .stock-by-branch { display: none; }
+  .price-sm { display: block; font-weight: 700; color: var(--green-ink); }
+}
+
+@media (max-width: 420px) {
+  /* The shop name is on every receipt; the branch is what staff must see. */
+  .topbar .shop { display: none; }
+  .branch-pick { max-width: 55vw; }
+  .kpis { grid-template-columns: 1fr; }
 }

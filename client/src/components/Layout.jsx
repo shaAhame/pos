@@ -50,11 +50,11 @@ export default function Layout() {
         ) : multiBranch && location ? <span className="branch-name">{location.name}</span> : null}
         <span className="spacer" />
         {online && queueCount === 0 ? (
-          <span className="status-pill" title="Connected"><span className="dot" />Online</span>
+          <span className="status-pill" title="Connected"><span className="dot" /><span className="pill-text">Online</span></span>
         ) : (
           <button className="status-pill off" style={{ border: 0, font: "inherit", cursor: "pointer" }} onClick={() => sync({ quiet: false })} title="Try to upload now">
             <span className="dot" />
-            {online ? `Uploading ${queueCount} sale${queueCount === 1 ? "" : "s"}` : `Offline${queueCount ? ` (${queueCount} waiting)` : ""}`}
+            <span className="pill-text">{online ? `Uploading ${queueCount} sale${queueCount === 1 ? "" : "s"}` : `Offline${queueCount ? ` (${queueCount} waiting)` : ""}`}</span>
           </button>
         )}
         <span className="hide-sm small" style={{ opacity: .8 }}>{shift ? "Shift open" : "No shift"}</span>
