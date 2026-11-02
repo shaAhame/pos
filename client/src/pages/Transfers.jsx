@@ -190,9 +190,10 @@ function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
     setScan("");
   };
   const onScan = (e) => { if (e.key === "Enter") { e.preventDefault(); take(scan); } };
+  // Any paste is a serial someone means to use, whether it is one or a hundred.
   const onPaste = (e) => {
     const text = e.clipboardData.getData("text");
-    if (splitSerials(text).length > 1) { e.preventDefault(); take(text); }   // a list, not a single scan
+    if (splitSerials(text).length) { e.preventDefault(); take(text); }
   };
 
   const all = (data || []).map((u) => u.serial);
