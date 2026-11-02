@@ -3,6 +3,7 @@ import { toast } from "react-toastify";
 import { api, errorMessage } from "../lib/api";
 import { useSession } from "../lib/session";
 import { useApi, useDebounced } from "../lib/hooks";
+import { addSerials, splitSerials, pickMessage } from "../lib/pickUnits";
 import { dateTime } from "../lib/format";
 import Modal from "../components/Modal";
 import { Empty, Loading, Pager } from "../components/ui";
@@ -177,21 +178,44 @@ function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
   const [chosen, setChosen] = useState(initial);
   const [scan, setScan] = useState("");
   const toggle = (s) => setChosen((c) => (c.includes(s) ? c.filter((x) => x !== s) : [...c, s]));
-  const onScan = (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const s = scan.trim().toUpperCase();
-    const u = (data || []).find((x) => x.serial.toUpperCase() === s);
-    if (!u) toast.error(`${s} isn't in stock at this branch`); else if (!chosen.includes(u.serial)) toggle(u.serial);
+
+  // Accepts one scan or a whole pasted column.
+  const take = (text) => {
+    if (!splitSerials(text).length) return;
+    const r = addSerials(data || [], chosen, text);
+    setChosen(r.chosen);
+    const { ok, bad } = pickMessage(r);
+    if (ok) toast.success(ok);
+    if (bad) toast.error(bad);
     setScan("");
   };
+  const onScan = (e) => { if (e.key === "Enter") { e.preventDefault(); take(scan); } };
+  const onPaste = (e) => {
+    const text = e.clipboardData.getData("text");
+    if (splitSerials(text).length > 1) { e.preventDefault(); take(text); }   // a list, not a single scan
+  };
+
+  const all = (data || []).map((u) => u.serial);
   return (
     <Modal title="Choose units to send" onClose={onClose} labelledBy="uc-title"
       footer={<div className="actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={() => onDone(chosen)}>Use {chosen.length} {chosen.length === 1 ? "unit" : "units"}</button></div>}>
       <div className="stack">
-        <div className="field"><label htmlFor="uc-scan">Scan a unit</label><input id="uc-scan" value={scan} onChange={(e) => setScan(e.target.value)} onKeyDown={onScan} autoFocus autoComplete="off" /></div>
+        <div className="field">
+          <label htmlFor="uc-scan">Scan a unit, or paste a list of serials</label>
+          <input id="uc-scan" value={scan} onChange={(e) => setScan(e.target.value)} onKeyDown={onScan} onPaste={onPaste} autoFocus autoComplete="off" />
+          <span className="hint">One at a time, or paste many at once separated by spaces, commas or new lines.</span>
+        </div>
         {!data ? <Loading /> : !data.length ? <p className="muted">No units in stock at this branch.</p> : (
-          <div className="serial-grid">{data.map((u) => <button key={u._id} type="button" className="chip" aria-pressed={chosen.includes(u.serial)} onClick={() => toggle(u.serial)}>{u.serial}</button>)}</div>
+          <>
+            <div className="row between">
+              <span className="small muted">{chosen.length} of {all.length} chosen</span>
+              <span className="row">
+                <button type="button" className="btn small" onClick={() => setChosen(all)} disabled={chosen.length === all.length}>Choose all {all.length}</button>
+                <button type="button" className="btn small" onClick={() => setChosen([])} disabled={!chosen.length}>Clear</button>
+              </span>
+            </div>
+            <div className="serial-grid">{data.map((u) => <button key={u._id} type="button" className="chip" aria-pressed={chosen.includes(u.serial)} onClick={() => toggle(u.serial)}>{u.serial}</button>)}</div>
+          </>
         )}
       </div>
     </Modal>
