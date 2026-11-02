@@ -206,6 +206,18 @@ function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
           <input id="uc-scan" value={scan} onChange={(e) => setScan(e.target.value)} onKeyDown={onScan} onPaste={onPaste} autoFocus autoComplete="off" />
           <span className="hint">One at a time, or paste many at once separated by spaces, commas or new lines.</span>
         </div>
+        {chosen.length > 0 && (
+          <div className="field">
+            <label>Sending these {chosen.length} {chosen.length === 1 ? "unit" : "units"}</label>
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              {chosen.map((sn) => (
+                <span key={sn} className="serial-chip">{sn}
+                  <button type="button" aria-label={`Remove ${sn}`} onClick={() => toggle(sn)}>&times;</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {!data ? <Loading /> : !data.length ? <p className="muted">No units in stock at this branch.</p> : (
           <>
             <div className="row between">
@@ -216,6 +228,7 @@ function UnitChooser({ productId, locationId, initial, onClose, onDone }) {
               </span>
             </div>
             <div className="serial-grid">{data.map((u) => <button key={u._id} type="button" className="chip" aria-pressed={chosen.includes(u.serial)} onClick={() => toggle(u.serial)}>{u.serial}</button>)}</div>
+            <p className="hint">Tap a unit to add or remove it. Scanning or pasting does the same.</p>
           </>
         )}
       </div>
